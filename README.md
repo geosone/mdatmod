@@ -1,4 +1,4 @@
-# datmod
+# mdatmod
 
 Profile-validated Mystic DAT utility.
 
