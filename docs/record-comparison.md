@@ -24,6 +24,11 @@ A45 ships a header declaring A44. A48 declares the same DataChanged marker as
 A47. A49 increases RecFileList from 121 to 256 bytes despite several unchanged
 record sizes. Archive names, program versions, equal sizes and data-version
 markers alone are therefore insufficient to choose arbitrary write offsets.
+Measured configuration offsets also differ: SysopName is at byte 1020 in the
+A45 header and at 1051 in A49; OutboundPath moves from 908 to 827, and
+UnsecurePath from 4646 to 746. DataPath remains at 98. Equal record size is
+therefore not a field-layout guarantee.
+
 Per-field checks and native validation remain necessary. None of the newly
 compared versions has been enabled for DAT writes.
 

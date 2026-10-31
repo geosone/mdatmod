@@ -2,7 +2,8 @@
 
 Profile-validated Mystic DAT utility.
 
-Status: repository and requirements prepared; no qualified executable release yet.
+Status: Pascal read-only research implementation with measured A45-A49 profiles.
+No write-capable or production-qualified release yet.
 
 ## Distribution
 
@@ -31,3 +32,16 @@ The program, its builds and tests live here. Installation/configuration integrat
 belongs to the separate mysticd repository. BBS artwork and presentation assets
 belong to mystic-theme. Existing live data must not be changed without explicit
 operator approval. License: GPL-3.0-only.
+
+## Current source build
+
+`make test` builds the single executable and runs hash self-tests.
+`python3 tests/test_readonly.py build/mdatmod` checks hash padding boundaries,
+refusal of unknown profiles/private fields and unchanged DAT bytes. An optional
+third argument selects an existing isolated vendor fixture.
+
+`mdatmod inspect ROOT` verifies the matching records.112 SHA-256, DAT size and
+data-version marker. `mdatmod get ROOT FIELD` reads only an explicit public
+configuration field allowlist; control bytes are escaped. Credentials and user
+records are not exposed. Writes are deliberately unimplemented pending offline
+process/lock policy, binary qualification and native write/rollback tests.
