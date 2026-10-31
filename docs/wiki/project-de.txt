@@ -1,0 +1,19 @@
+====== mdatmod ======
+
+Mystic-DAT-Dateien anhand geprüfter Versionsprofile erkennen, lesen und kontrolliert ändern. Unbekannte Formate müssen abgewiesen werden.
+
+**Stand:** Pascal-Implementierung; Offline-Schreibzugriffe sind umgesetzt und durch native Schreibtests belegt. Ein Release erscheint erst, wenn auch die Windows-Tests x86/x64 bestanden sind.
+
+[[https://github.com/geosone/mdatmod|Quellcode und Entwicklung]]
+
+[[:de:projects:mdatmod|Deutsch]] · [[:en:projects:mdatmod|English]]
+
+===== Technische Grundlage =====
+
+Die Implementierung verwendet Free Pascal und eingebettete Formatprofile. Offizielle records.112-Dateien aus A45 bis A49 wurden verglichen. Dabei ändern sich sowohl Record-Größen als auch Feldpositionen; ein Versionsname oder eine gleiche Dateigröße allein genügt nicht.
+
+Geprüft werden Header-Fingerprint, DAT-Größe, Datenversionskennung und der Hash der Mystic-Binärdatei. Gelesen und geschrieben werden nur ausgewählte öffentliche Konfigurationsfelder; private Felder und unbekannte Profile werden verweigert. Schreibzugriffe sind ausschließlich offline erlaubt: MIS, Mystic, MUTIL, MIDE und UPGRADE dürfen nicht aus dem Zielverzeichnis laufen. Vor dem Schreiben wird exklusiv gesperrt, eine private Sicherung mit SHA-256 und Zielverweis angelegt, die Datei atomar ersetzt und das Ergebnis nachgelesen. `restore` akzeptiert nur diese Sicherungen.
+
+Die Auslieferung besteht aus einer ausführbaren Datei und README.txt: ZIP für Windows, tar.gz für Linux. Keine zusätzliche Manpage, kein MSI/DEB und kein systemweiter PATH-Eintrag.
+
+[[:de:projects:start|Zur Projektübersicht]]

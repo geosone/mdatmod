@@ -1,0 +1,19 @@
+====== mdatmod ======
+
+Identify, read and deliberately edit Mystic DAT files through validated version profiles. Unknown layouts must be refused.
+
+**Status:** Pascal implementation; offline writes are implemented and covered by native writer tests. A release follows only after the Windows x86/x64 writer tests pass.
+
+[[https://github.com/geosone/mdatmod|Source and development]]
+
+[[:de:projects:mdatmod|Deutsch]] · [[:en:projects:mdatmod|English]]
+
+===== Technical basis =====
+
+Implemented in Free Pascal with embedded format profiles. Official records.112 files from A45 through A49 were compared. Both record sizes and field offsets change; version names or matching sizes alone do not qualify a layout.
+
+The tool checks the developer-header fingerprint, DAT size, data-version marker and the hash of the Mystic binary. It reads and writes only an explicit public-field allowlist; private fields and unknown profiles are refused. Writes are offline only: MIS, Mystic, MUTIL, MIDE and UPGRADE must not run from the target root. Before writing it takes an exclusive lock, saves a private backup with SHA-256 and target reference, replaces the file atomically and reads the result back. `restore` accepts only those backups.
+
+Distribution contains one executable and README.txt: ZIP for Windows, tar.gz for Linux. No separate manpage, MSI/DEB or system-wide PATH change.
+
+[[:en:projects:start|Project overview]]
