@@ -43,8 +43,19 @@ with tempfile.TemporaryDirectory(prefix='mdatmod-writer-') as directory:
         assert backup.stat().st_mode & 0o077 == 0
     run('restore', root, backup, '--apply')
     assert dat.read_bytes() == original
-    for field, value in [('SystemPW', 'private'), ('BBSName', 'x' * 31), ('BBSName', '\x1b[2J')]:
+    for field, value in [('SystemPW', 'private'), ('BBSName', 'x' * 31)]:
         run('set', root, field, value, '--apply', ok=False)
+        assert dat.read_bytes() == original
+    # Windows drops control characters from command-line arguments, so a
+    # command-line value would silently become a different valid string.
+    # The installer passes values through a request file; check that path.
+    if os.name == 'nt':
+        control = Path(directory) / 'control.ini'
+        control.write_bytes(b'[Fields]\nBBSName=before\x1bafter\n')
+        run('set-config', root, control, '--apply', ok=False)
+        assert dat.read_bytes() == original
+    else:
+        run('set', root, 'BBSName', '\x1b[2J', '--apply', ok=False)
         assert dat.read_bytes() == original
 
     request = Path(directory) / 'fields.ini'
