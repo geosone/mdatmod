@@ -3,19 +3,24 @@
 Profile-validated Mystic DAT utility.
 
 Status: Pascal implementation with measured A45-A49 profiles. Offline writes are
-implemented and pass the native writer tests; no release artifact is published
-until the Windows x86/x64 writer tests also pass.
+implemented and pass the native writer tests on Linux and Windows.
 
 ## Distribution
 
 Windows releases use ZIP archives; Linux releases use tar.gz archives. Extract
 beside Mystic in `/opt/mystic` or `C:\Mystic`. No MSI, DEB, system service,
 global PATH change or machine-wide installation is planned for this small tool.
-Each archive contains exactly one native executable and README.txt. Embed
-profiles/data in the program; do not ship script wrappers, helper DLLs or
-sidecar configuration. Identify architecture and runtime/library requirements
-in the README. Checksums are published beside the archive on GitHub.
-There is no release artifact until native tests pass.
+Each archive contains exactly one native executable and README.txt, taken from
+`packaging/README.txt`. Embed profiles/data in the program; do not ship script
+wrappers, helper DLLs or sidecar configuration. Checksums are published beside
+the archive on GitHub.
+
+`.github/workflows/build.yml` builds and exercises every archive: Linux amd64,
+arm64 and armhf through buildx/QEMU in Debian bullseye, Windows x86/x64 with a
+pinned Lazarus/FPC, including the PE machine check and the hash/refusal test.
+Tagging `v*` publishes the archives and `SHA256SUMS`. The writer test needs the
+non-redistributable vendor `records.112` and an isolated Mystic installation, so
+it stays a qualified-machine step before a tag.
 
 ## Requirements
 

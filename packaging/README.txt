@@ -1,0 +1,45 @@
+mdatmod - qualified offline Mystic DAT tool
+===========================================
+
+Reads and writes public fields of Mystic 1.12 A49 DAT files through
+validated record profiles. Unknown versions and layouts are refused.
+
+Requirements
+------------
+- Mystic 1.12 A49 installation with its matching docs/records.112
+- MIS, Mystic, MUTIL, MIDE and UPGRADE stopped while a write is applied
+- Linux amd64/arm64/armhf or Windows x86/x64
+
+Usage
+-----
+  mdatmod inspect ROOT
+  mdatmod profile ROOT
+  mdatmod get ROOT FIELD
+  mdatmod set ROOT FIELD VALUE [--apply]
+  mdatmod set-config ROOT REQUEST.ini [--apply]
+  mdatmod set-server ROOT PROTOCOL REQUEST.ini [--apply]
+  mdatmod disable-servers ROOT [--apply]
+  mdatmod ban-event ROOT REQUEST.ini [--apply]
+  mdatmod restore ROOT BACKUP [--apply]
+  mdatmod check-offline ROOT
+  mdatmod --hash FILE
+  mdatmod --self-test
+
+Without --apply every write command only prints the plan and changes
+nothing. With --apply the tool checks the binary hash, record profile and
+process state, takes an exclusive lock, writes a private backup with SHA-256
+and target reference, replaces the file atomically and verifies the result.
+restore accepts only backups created by this tool.
+
+ROOT is the Mystic installation directory. REQUEST.ini contains one
+[Fields] section with public field names; values are printable ASCII.
+
+Private fields, unknown profiles, overlong values, running instances and
+symlinked DAT files are refused. There is no support for editing a running
+production BBS: plan a maintenance window and stop the services first.
+
+Extract the archive beside Mystic, for example /opt/mystic or C:\Mystic.
+No installer, service or PATH change is performed.
+
+License: GPL-3.0-only
+Source:  https://github.com/geosone/mdatmod

@@ -1,0 +1,129 @@
+name: build
+
+# Builds and exercises the release archives. The writer test needs the
+# non-redistributable vendor records.112 and an isolated Mystic installation,
+# so it runs on qualified test machines, not on hosted runners.
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MDATMOD_VERSION: 0.2.0
+
+jobs:
+  linux-build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - {arch: amd64, platform: linux/amd64}
+          - {arch: arm64, platform: linux/arm64}
+          - {arch: armhf, platform: linux/arm/v7}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Build archive
+        run: docker buildx build --platform '${{ matrix.target.platform }}' --build-arg VERSION="$MDATMOD_VERSION" --output type=local,dest=out -f packaging/Dockerfile.linux .
+      - name: Exercise the extracted archive
+        run: |
+          mkdir runtime
+          tar -xzf "out/mdatmod-$MDATMOD_VERSION-linux-${{ matrix.target.arch }}.tar.gz" -C runtime
+          test "$(find runtime -maxdepth 1 -type f | wc -l)" = 2
+          docker run --rm --platform '${{ matrix.target.platform }}' -v "$PWD:/work:ro" -w /work debian:bookworm-slim sh -ec '
+            apt-get update > /dev/null
+            apt-get install -y --no-install-recommends python3 > /dev/null
+            ./runtime/mdatmod --self-test
+            python3 tests/test_readonly.py ./runtime/mdatmod'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mdatmod-linux-${{ matrix.target.arch }}
+          path: out/*.tar.gz
+          if-no-files-found: error
+
+  windows-build:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - {arch: x86, bits: '32', suffix: win32}
+          - {arch: x64, bits: '64', suffix: win64}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Lazarus and Free Pascal
+        shell: pwsh
+        run: |
+          $url = 'https://downloads.sourceforge.net/project/lazarus/Lazarus%20Windows%20${{ matrix.target.bits }}%20bits/Lazarus%204.4/lazarus-4.4-fpc-3.2.2-${{ matrix.target.suffix }}.exe'
+          $installer = Join-Path $env:RUNNER_TEMP 'lazarus-setup.exe'
+          & curl.exe --fail --location --retry 4 --output $installer $url
+          if ($LASTEXITCODE) { throw 'Compiler download failed.' }
+          $bytes = [IO.File]::ReadAllBytes($installer)
+          if ($bytes.Length -lt 100MB -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) { throw 'Compiler download is not a complete executable.' }
+          $destination = Join-Path $env:RUNNER_TEMP 'lazarus'
+          $process = Start-Process $installer -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', ('/DIR=' + $destination)) -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Lazarus installation failed: $($process.ExitCode)" }
+      - name: Build and self-test native executable
+        shell: pwsh
+        run: |
+          ./packaging/Build-Windows.ps1 -LazarusDirectory "$env:RUNNER_TEMP/lazarus" -OutputDirectory "$env:RUNNER_TEMP/native" -Architecture '${{ matrix.target.arch }}'
+          python tests/test_readonly.py "$env:RUNNER_TEMP/native/mdatmod.exe"
+          if ($LASTEXITCODE) { throw 'Native refusal regression test failed.' }
+      - name: Create and exercise portable archive
+        shell: pwsh
+        run: |
+          $native = Join-Path $env:RUNNER_TEMP 'native'
+          $archive = Join-Path $env:RUNNER_TEMP 'archive'
+          $null = New-Item -ItemType Directory -Path $archive -Force
+          Copy-Item (Join-Path $native 'mdatmod.exe') $archive
+          Copy-Item (Join-Path $PWD 'packaging/README.txt') (Join-Path $archive 'README.txt')
+          $zip = Join-Path $archive "mdatmod-$env:MDATMOD_VERSION-windows-${{ matrix.target.arch }}.zip"
+          Compress-Archive -Path (Join-Path $archive 'mdatmod.exe'), (Join-Path $archive 'README.txt') -DestinationPath $zip
+          $extracted = Join-Path $env:RUNNER_TEMP 'extracted'
+          Expand-Archive -LiteralPath $zip -DestinationPath $extracted
+          if (@(Get-ChildItem -LiteralPath $extracted -File).Count -ne 2) { throw 'Archive must contain exactly two files.' }
+          & (Join-Path $extracted 'mdatmod.exe') --self-test
+          if ($LASTEXITCODE) { throw 'Extracted archive self-test failed.' }
+          $hash = (Get-FileHash -LiteralPath $zip).Hash.ToLowerInvariant()
+          [IO.File]::WriteAllText((Join-Path $archive 'SHA256SUMS'), "$hash  $(Split-Path $zip -Leaf)`n")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mdatmod-windows-${{ matrix.target.arch }}
+          path: |
+            ${{ runner.temp }}/archive/*.zip
+            ${{ runner.temp }}/archive/SHA256SUMS
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux-build, windows-build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Publish archives and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd artifacts
+          sha256sum *.tar.gz *.zip > SHA256SUMS
+          cat SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --title "mdatmod $MDATMOD_VERSION" --generate-notes \
+            *.tar.gz *.zip SHA256SUMS

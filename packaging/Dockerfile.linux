@@ -1,0 +1,17 @@
+# Build one portable Linux archive per buildx platform.
+# The final scratch stage exposes only the finished tar.gz to --output type=local.
+# Debian bookworm is the oldest supported installer target and ships FPC 3.2.2,
+# which the Sockets unit needs; trixie and newer stay forward compatible.
+FROM debian:bookworm-slim AS builder
+RUN apt-get update && apt-get install -y --no-install-recommends libc6-dev fp-compiler fp-units-fcl fp-units-base make ca-certificates && rm -rf /var/lib/apt/lists/*
+ARG VERSION=0.2.0
+WORKDIR /build
+COPY . .
+RUN make \
+ && ./build/mdatmod --self-test \
+ && mkdir -p /portable /output \
+ && install -m 0755 build/mdatmod /portable/mdatmod \
+ && install -m 0644 packaging/README.txt /portable/README.txt \
+ && tar -czf "/output/mdatmod-${VERSION}-linux-$(dpkg --print-architecture).tar.gz" -C /portable mdatmod README.txt
+FROM scratch
+COPY --from=builder /output/ /
