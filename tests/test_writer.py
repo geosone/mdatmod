@@ -2,7 +2,6 @@
 import hashlib
 import os
 from pathlib import Path
-import pty
 import shutil
 import signal
 import subprocess
@@ -11,13 +10,15 @@ import tempfile
 
 exe = Path(sys.argv[1]).resolve()
 source = Path(sys.argv[2]).resolve()
+# Native binaries keep their platform suffix; the DAT names do not.
+suffix = '.exe' if os.name == 'nt' else ''
 source_hash = hashlib.sha256((source / 'mystic.dat').read_bytes()).digest()
 with tempfile.TemporaryDirectory(prefix='mdatmod-writer-') as directory:
     root = Path(directory) / 'bbs'
     root.mkdir()
     (root / 'docs').mkdir()
     shutil.copy2(source / 'docs/records.112', root / 'docs/records.112')
-    for name in ['mystic', 'mis', 'mutil', 'mystic.dat']:
+    for name in [f'mystic{suffix}', f'mis{suffix}', f'mutil{suffix}', 'mystic.dat']:
         shutil.copy2(source / name, root / name)
     (root / 'data').mkdir()
     for name in ['servers.dat', 'event.dat']:
@@ -68,6 +69,7 @@ with tempfile.TemporaryDirectory(prefix='mdatmod-writer-') as directory:
     assert (root / 'data/event.dat').read_bytes() == event_before
 
     if os.name != 'nt':
+        import pty
         master, slave = pty.openpty()
         process = subprocess.Popen([str(root / 'mystic'), '-cfg'], cwd=root,
                                    stdin=slave, stdout=slave, stderr=slave)
@@ -86,4 +88,6 @@ with tempfile.TemporaryDirectory(prefix='mdatmod-writer-') as directory:
         dat.symlink_to(root / 'original.dat')
         run('set', root, 'BBSName', 'Must refuse', '--apply', ok=False)
     assert hashlib.sha256((source / 'mystic.dat').read_bytes()).digest() == source_hash
-print('PASS offline config/server/event writes, byte preservation, backup/checksum, restore, private/invalid-field refusal, busy process and symlink guards')
+guards = 'busy process and symlink guards' if os.name != 'nt' else 'Windows refusal guards'
+print('PASS offline config/server/event writes, byte preservation, backup/checksum, '
+      f'restore, private/invalid-field refusal, {guards}')
