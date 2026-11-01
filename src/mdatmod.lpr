@@ -6,7 +6,7 @@ uses Classes, SysUtils, Sockets, msha256, mprofiles, msafeio, mrequest;
 
 procedure Usage;
 begin
-    Writeln('mdatmod 0.2.1 - qualified offline Mystic DAT tool');
+    Writeln('mdatmod 0.2.2 - qualified offline Mystic DAT tool');
     Writeln('  mdatmod inspect ROOT');
     Writeln('  mdatmod get ROOT FIELD');
     Writeln('  mdatmod set ROOT FIELD VALUE [--apply]');

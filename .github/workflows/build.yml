@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  MDATMOD_VERSION: 0.2.1
+  MDATMOD_VERSION: 0.2.2
 
 jobs:
   linux-build:
@@ -128,7 +128,7 @@ jobs:
           ./tests/Prepare-NativeFixture.ps1 -Directory /tmp/mdatmod-native-ci -Architecture amd64
           tar -xzf "archive/mdatmod-$env:MDATMOD_VERSION-linux-amd64.tar.gz" -C archive
           if ($LASTEXITCODE) { throw 'Archive extraction failed.' }
-          python3 tests/test_writer.py archive/mdatmod /tmp/mdatmod-native-ci/bbs
+          sudo python3 tests/test_writer.py archive/mdatmod /tmp/mdatmod-native-ci/bbs
           if ($LASTEXITCODE) { throw 'Native writer test failed.' }
 
   release:
