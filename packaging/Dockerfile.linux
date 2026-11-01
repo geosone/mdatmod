@@ -4,14 +4,17 @@
 # which the Sockets unit needs; trixie and newer stay forward compatible.
 FROM debian:bookworm-slim AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends libc6-dev fp-compiler fp-units-fcl fp-units-base make ca-certificates && rm -rf /var/lib/apt/lists/*
-ARG VERSION=0.2.2
+ARG VERSION=0.3.0
 WORKDIR /build
 COPY . .
 RUN make \
  && ./build/mdatmod --self-test \
+ && mkdir -p /test-tools/units \
+ && fpc -Fu./src -FU/test-tools/units -FE/test-tools -oopenflagprobe tools/openflagprobe.pas \
  && mkdir -p /portable /output \
  && install -m 0755 build/mdatmod /portable/mdatmod \
  && install -m 0644 packaging/README.txt /portable/README.txt \
  && tar -czf "/output/mdatmod-${VERSION}-linux-$(dpkg --print-architecture).tar.gz" -C /portable mdatmod README.txt
 FROM scratch
 COPY --from=builder /output/ /
+COPY --from=builder /test-tools/openflagprobe /tests/openflagprobe

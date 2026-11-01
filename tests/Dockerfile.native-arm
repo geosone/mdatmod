@@ -1,0 +1,7 @@
+ARG SUITE=bookworm
+FROM debian:${SUITE}-slim
+RUN apt-get update && apt-get install -y --no-install-recommends libc6-dev fp-compiler fp-units-fcl fp-units-base make python3 binutils && rm -rf /var/lib/apt/lists/*
+# Vendor ARM32 binaries are hard-float ELF files but name the old loader path.
+# This alias is created only inside the disposable native test image.
+RUN if [ "$(dpkg --print-architecture)" = armhf ]; then ln -s ld-linux-armhf.so.3 /lib/ld-linux.so.3; fi
+WORKDIR /work

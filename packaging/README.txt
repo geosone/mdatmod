@@ -9,8 +9,7 @@ Requirements
 - Mystic 1.12 A49 installation with its matching docs/records.112
 - MIS, Mystic, MUTIL, MIDE and UPGRADE stopped while a write is applied
 - Inspection archives: Linux amd64/arm64/armhf or Windows x86/x64
-- Qualified writes: Linux amd64 A48/A49 and Windows x86/x64 A49 only
-- ARM Mystic writes remain refused until native ARM fixtures are qualified
+- Qualified writes: Linux amd64 A48/A49, arm64 A48, armhf A48/A49; Windows x86/x64 A49
 
 Usage
 -----
@@ -56,5 +55,12 @@ root are detected, except for the current mdatmod process itself.
 
 Native release tests cover config/server/event writes, unchanged bytes,
 checksummed backups and restore, empty event files, invalid fields, foreign
-file locks and native/renamed processes. ARM archive tests do not qualify
-ARM native writes. Vendor fixtures are downloaded for tests, never shipped.
+file locks and native/renamed processes. ARM native write qualification covers Debian 12/13, with A48 on arm64
+and A48/A49 on armhf. Other vendor binaries remain refused. Vendor fixtures are downloaded for tests, never shipped.
+
+ARM syscall compatibility: FPC 3.2.2 supplies x86 directory/no-follow open
+flags on ARM. mdatmod uses the measured ARM/AArch64 ABI constants and tests
+their actual kernel behavior. Vendor ARM32 executables require the legacy
+/lib/ld-linux.so.3 loader name; the qualification image provides an alias to
+the hard-float loader inside disposable containers only. See the source
+qualification report for exact vendor hashes and the six native test runs.

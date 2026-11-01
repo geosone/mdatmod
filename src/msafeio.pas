@@ -9,7 +9,7 @@ function CommitConfig(const Root:string; const Expected, Replacement:TBytes):str
 function CommitData(const Root,TargetFile:string; const Expected, Replacement:TBytes):string;
 implementation
 uses msha256
-{$ifdef Linux}, BaseUnix, Unix{$endif}
+{$ifdef Linux}, BaseUnix, Unix, mlinuxflags{$endif}
 {$ifdef Windows}, Windows, JwaTlHelp32{$endif};
 
 {$ifdef Linux}
@@ -56,10 +56,15 @@ var Digest:string;
 begin
     {$ifdef Linux}
     Digest:=SHA256File(IncludeTrailingPathDelimiter(Root)+'mystic');
+    // ARM candidates are admitted only with the exact vendor binary hash;
+    // record layouts and native write tests are documented per architecture.
     if (Version='1.12 A48') and
-       (Digest='e28cb30874a99a51d2bc36d596edf773c88016e4b241dbfb596792bd2a96768d') then Exit;
+       ((Digest='e28cb30874a99a51d2bc36d596edf773c88016e4b241dbfb596792bd2a96768d') or
+        (Digest='50e68574be0b044fc7a96f7aa57a196ec3450fe4eb4a0a163652f400b7f57bf3') or
+        (Digest='db0cedcf3b293f9b8ab007bebe480f118da189a307f0a636b03a5a91201946d8')) then Exit;
     if (Version='1.12 A49') and
-       (Digest='39e47caa92d70e49dd826c074083f4046745ccbe40e5ef89662a98333ee210c3') then Exit;
+       ((Digest='39e47caa92d70e49dd826c074083f4046745ccbe40e5ef89662a98333ee210c3') or
+        (Digest='91077e44fa992bbac287d65e471389209a392bc863418886bcff02849e40d74a')) then Exit;
     {$endif}
     {$ifdef Windows}
     Digest:=SHA256File(IncludeTrailingPathDelimiter(Root)+'mystic.exe');
@@ -172,7 +177,7 @@ procedure SavePrivate(const Path:string; const Data:TBytes);
 {$ifdef Windows}var Handle:THandle; Descriptor:Pointer; Attributes:TSecurityAttributes; Written:DWORD;{$endif}
 begin
     {$ifdef Linux}
-    FD:=fpOpen(PChar(Path),O_WRONLY or O_CREAT or O_EXCL or O_NOFOLLOW,&600);
+    FD:=fpOpen(PChar(Path),O_WRONLY or O_CREAT or O_EXCL or NativeNoFollowFlag,&600);
     if FD<0 then raise Exception.Create('Cannot create a new protected file.');
     try
         Offset:=0;
@@ -234,7 +239,7 @@ end;
 procedure SyncDirectory(const Path:string);
 var FD:LongInt;
 begin
-    FD:=fpOpen(PChar(Path),O_RDONLY or O_DIRECTORY);
+    FD:=fpOpen(PChar(Path),O_RDONLY or NativeDirectoryFlag);
     if FD<0 then raise Exception.Create('Cannot open directory for synchronization.');
     try
         if fpFsync(FD)<>0 then raise Exception.Create('Directory synchronization failed. Backup retained.');
@@ -266,10 +271,10 @@ begin
     {$ifdef Linux}
     if (fpLStat(PChar(Target),Original)<>0) or not FPS_ISREG(Original.st_mode) then
         raise Exception.Create('DAT must be a regular file, not a symlink.');
-    LockFD:=fpOpen(PChar(LockPath),O_RDWR or O_CREAT or O_NOFOLLOW,&600);
+    LockFD:=fpOpen(PChar(LockPath),O_RDWR or O_CREAT or NativeNoFollowFlag,&600);
     if LockFD<0 then raise Exception.Create('Cannot create writer lock.');
     if fpFlock(LockFD,LOCK_EX or LOCK_NB)<>0 then begin fpClose(LockFD); raise Exception.Create('Another writer holds the root lock.'); end;
-    TargetFD:=fpOpen(PChar(Target),O_RDWR or O_NOFOLLOW);
+    TargetFD:=fpOpen(PChar(Target),O_RDWR or NativeNoFollowFlag);
     if TargetFD<0 then begin fpClose(LockFD); raise Exception.Create('Cannot exclusively open the DAT target.'); end;
     if fpFlock(TargetFD,LOCK_EX or LOCK_NB)<>0 then begin fpClose(TargetFD); fpClose(LockFD); raise Exception.Create('Another process locks the DAT target.'); end;
     {$endif}
@@ -323,7 +328,7 @@ begin
         SavePrivate(Result+'.sha256',BytesOf(SHA256Bytes(Expected)+'  '+ExtractFileName(Result)+LineEnding));
         SavePrivate(Result+'.target',BytesOf(Copy(Target,Length(IncludeTrailingPathDelimiter(Root))+1,MaxInt)+LineEnding));
         {$ifdef Linux}
-        DirectoryFD:=fpOpen(PChar(BackupDirectory),O_RDONLY or O_DIRECTORY);
+        DirectoryFD:=fpOpen(PChar(BackupDirectory),O_RDONLY or NativeDirectoryFlag);
         if DirectoryFD<0 then raise Exception.Create('Cannot open backup directory for synchronization.');
         try
             if fpFsync(DirectoryFD)<>0 then raise Exception.Create('Backup directory synchronization failed.');
@@ -352,7 +357,7 @@ begin
         {$ifdef Linux}
         if fpRename(PChar(Temporary),PChar(Target))<>0 then raise Exception.Create('Atomic DAT replacement failed.');
         Temporary:='';
-        DirectoryFD:=fpOpen(PChar(ExtractFilePath(Target)),O_RDONLY or O_DIRECTORY);
+        DirectoryFD:=fpOpen(PChar(ExtractFilePath(Target)),O_RDONLY or NativeDirectoryFlag);
         if DirectoryFD<0 then raise Exception.Create('Cannot synchronize the root directory. Backup retained.');
         try
             if fpFsync(DirectoryFD)<>0 then raise Exception.Create('Directory synchronization failed. Backup retained.');

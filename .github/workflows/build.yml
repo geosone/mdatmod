@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  MDATMOD_VERSION: 0.2.2
+  MDATMOD_VERSION: 0.3.0
 
 jobs:
   linux-build:
@@ -46,6 +46,7 @@ jobs:
             apt-get update > /dev/null
             apt-get install -y --no-install-recommends python3 > /dev/null
             ./runtime/mdatmod --self-test
+            ./out/tests/openflagprobe /tmp/mdatmod-openflag-check
             python3 tests/test_readonly.py ./runtime/mdatmod'
       - uses: actions/upload-artifact@v4
         with:
@@ -87,6 +88,8 @@ jobs:
           ./tests/Prepare-NativeFixture.ps1 -Directory C:/mdatmod-native-ci -Architecture '${{ matrix.target.arch }}'
           python tests/test_writer.py "$env:RUNNER_TEMP/native/mdatmod.exe" C:/mdatmod-native-ci/bbs
           if ($LASTEXITCODE) { throw 'Native Windows writer test failed.' }
+          python tests/test_native_mutil.py "$env:RUNNER_TEMP/native/mdatmod.exe" C:/mdatmod-native-ci/bbs
+          if ($LASTEXITCODE) { throw 'Native Windows MUTIL readback failed.' }
       - name: Create and exercise portable archive
         shell: pwsh
         run: |
@@ -130,6 +133,8 @@ jobs:
           if ($LASTEXITCODE) { throw 'Archive extraction failed.' }
           sudo python3 tests/test_writer.py archive/mdatmod /tmp/mdatmod-native-ci/bbs
           if ($LASTEXITCODE) { throw 'Native writer test failed.' }
+          sudo python3 tests/test_native_mutil.py archive/mdatmod /tmp/mdatmod-native-ci/bbs
+          if ($LASTEXITCODE) { throw 'Native MUTIL readback failed.' }
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')

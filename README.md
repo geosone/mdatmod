@@ -83,9 +83,10 @@ DAT.
 
 ## Native write qualification
 
-ARM archives currently support inspection only: native ARM Mystic write profiles
-have not been qualified. Linux x86-64 A48/A49 and Windows x86/x64 A49 are the
-qualified writer targets. No release archive implies support for other binaries.
+Native writes are qualified for Linux x86-64 A48/A49, ARM64 A48, ARMHF
+A48/A49 and Windows x86/x64 A49. The ARM matrix passed on real ARM hardware
+with Debian 12 and 13 userspaces. No public A49 ARM64 binary was available
+during qualification; that combination is not claimed. No release archive implies support for other binaries.
 
 The root writer lock coordinates mdatmod instances. Windows holds a read handle
 that denies foreign writes while allowing atomic replacement. Linux holds flock
@@ -98,3 +99,10 @@ Native qualification also tests foreign file locks, renamed processes, installed
 mdatmod execution and empty event backups/restores. Unknown or inaccessible
 candidate BBS processes fail closed. System processes without user-mode image
 paths are skipped when they cannot correspond to a native file in the root.
+
+ARM syscall compatibility: FPC 3.2.2 supplies x86 directory/no-follow open
+flags on ARM. mdatmod uses the measured ARM/AArch64 ABI constants and tests
+their actual kernel behavior. Vendor ARM32 executables require the legacy
+/lib/ld-linux.so.3 loader name; the qualification image provides an alias to
+the hard-float loader inside disposable containers only. See the source
+qualification report for exact vendor hashes and the six native test runs.

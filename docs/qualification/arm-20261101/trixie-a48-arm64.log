@@ -1,0 +1,141 @@
+aarch64
+arm64
+mkdir -p /tmp/native-build/units
+fpc -MObjFPC -Scghi -O2 -Fu./src -FU/tmp/native-build/units -FE/tmp/native-build -omdatmod src/mdatmod.lpr
+Free Pascal Compiler version 3.2.2+dfsg-46 [2025/02/08] for aarch64
+Copyright (c) 1993-2021 by Florian Klaempfl and others
+Target OS: Linux for AArch64
+Compiling src/mdatmod.lpr
+Compiling src/msha256.pas
+Assembling msha256
+Compiling src/mprofiles.pas
+Assembling mprofiles
+Compiling src/msafeio.pas
+Compiling src/mlinuxflags.pas
+msafeio.pas(185,20) Note: Call to subroutine "function FpWrite(fd:LongInt;const buf:<Formal type>;nbytes:QWord):Int64;" marked as inline is not inlined
+msafeio.pas(231,16) Note: Call to subroutine "function FpRead(fd:LongInt;var buf:<Formal type>;nbytes:QWord):Int64;" marked as inline is not inlined
+msafeio.pas(242,9) Note: Call to subroutine "function FpOpen(path:PChar;flags:LongInt):LongInt;" marked as inline is not inlined
+msafeio.pas(272,9) Note: Call to subroutine "function fpLstat(path:PChar;var Info:stat):LongInt;" marked as inline is not inlined
+msafeio.pas(277,15) Note: Call to subroutine "function FpOpen(path:PChar;flags:LongInt):LongInt;" marked as inline is not inlined
+msafeio.pas(317,13) Note: Call to subroutine "function fpLstat(path:PChar;var Info:stat):LongInt;" marked as inline is not inlined
+msafeio.pas(331,22) Note: Call to subroutine "function FpOpen(path:PChar;flags:LongInt):LongInt;" marked as inline is not inlined
+msafeio.pas(360,22) Note: Call to subroutine "function FpOpen(path:PChar;flags:LongInt):LongInt;" marked as inline is not inlined
+Assembling msafeio
+Compiling src/mrequest.pas
+Assembling mrequest
+Assembling mdatmod
+Linking /tmp/native-build/mdatmod
+mdatmod.lpr(405) Warning: "crtbegin.o" not found, this will probably cause a linking failure
+mdatmod.lpr(405) Warning: "crtend.o" not found, this will probably cause a linking failure
+1138 lines compiled, 2.0 sec
+2 warning(s) issued
+8 note(s) issued
+Free Pascal Compiler version 3.2.2+dfsg-46 [2025/02/08] for aarch64
+Copyright (c) 1993-2021 by Florian Klaempfl and others
+Target OS: Linux for AArch64
+Compiling tools/writerlayoutprobe.pas
+writerlayoutprobe.pas(18,9) Warning: unreachable code
+Assembling writerlayoutprobe
+Linking /tmp/writerlayout
+1185 lines compiled, 0.6 sec
+1 warning(s) issued
+Config.Bytes=8192
+Server.Bytes=384
+Event.Bytes=640
+Config.SystemPath.Offset=17
+Config.SystemPath.Bytes=81
+Config.DataPath.Offset=98
+Config.DataPath.Bytes=81
+Config.LogsPath.Offset=179
+Config.LogsPath.Bytes=81
+Config.MsgsPath.Offset=260
+Config.MsgsPath.Bytes=81
+Config.ThemePath.Offset=341
+Config.ThemePath.Bytes=81
+Config.Python2Lib.Offset=422
+Config.Python2Lib.Bytes=81
+Config.Python3Lib.Offset=503
+Config.Python3Lib.Bytes=81
+Config.SemaPath.Offset=584
+Config.SemaPath.Bytes=81
+Config.InboundPath.Offset=665
+Config.InboundPath.Bytes=81
+Config.UnsecurePath.Offset=746
+Config.UnsecurePath.Bytes=81
+Config.OutboundPath.Offset=827
+Config.OutboundPath.Bytes=81
+Config.AttachPath.Offset=908
+Config.AttachPath.Bytes=81
+Config.BBSName.Offset=989
+Config.BBSName.Bytes=31
+Config.BBSLocation.Offset=1020
+Config.BBSLocation.Bytes=31
+Config.SysopName.Offset=1051
+Config.SysopName.Bytes=31
+Server.Active.Offset=0
+Server.Active.Bytes=1
+Server.IPv4Adapter.Offset=1
+Server.IPv4Adapter.Bytes=20
+Server.IPv6Adapter.Offset=21
+Server.IPv6Adapter.Bytes=40
+Server.AdapterType.Offset=61
+Server.AdapterType.Bytes=1
+Server.ProtID.Offset=66
+Server.ProtID.Bytes=9
+Server.Port.Offset=75
+Server.Port.Bytes=2
+Server.MaxAllowed.Offset=77
+Server.MaxAllowed.Bytes=2
+Server.MaxIPs.Offset=79
+Server.MaxIPs.Bytes=1
+Server.BanIP.Offset=80
+Server.BanIP.Bytes=1
+Server.BanSecs.Offset=81
+Server.BanSecs.Bytes=2
+Server.TimeOut.Offset=83
+Server.TimeOut.Bytes=2
+Server.CountryBlock.Offset=85
+Server.CountryBlock.Bytes=1
+Server.SendBlocked.Offset=86
+Server.SendBlocked.Bytes=1
+Server.WebRoot.Offset=96
+Server.WebRoot.Bytes=81
+Server.SSLPort.Offset=178
+Server.SSLPort.Bytes=2
+Event.UID.Offset=0
+Event.UID.Bytes=4
+Event.Active.Offset=4
+Event.Active.Bytes=1
+Event.Name.Offset=6
+Event.Name.Bytes=41
+Event.ExecType.Offset=47
+Event.ExecType.Bytes=1
+Event.Shell.Offset=57
+Event.Shell.Bytes=161
+Event.Flags.Offset=552
+Event.Flags.Bytes=4
+Status=PASS
+Free Pascal Compiler version 3.2.2+dfsg-46 [2025/02/08] for aarch64
+Copyright (c) 1993-2021 by Florian Klaempfl and others
+Target OS: Linux for AArch64
+Compiling tools/openflagprobe.pas
+Compiling ./src/mlinuxflags.pas
+openflagprobe.pas(14,13) Note: Call to subroutine "function FpOpen(path:PChar;flags:LongInt):LongInt;" marked as inline is not inlined
+openflagprobe.pas(23,13) Note: Call to subroutine "function FpOpen(path:PChar;flags:LongInt):LongInt;" marked as inline is not inlined
+Assembling openflagprobe
+Linking /tmp/openflagprobe
+57 lines compiled, 0.9 sec
+2 note(s) issued
+DirectoryFlag=16384
+NoFollowFlag=32768
+Status=PASS
+PASS SHA-256 empty, abc and million-a vectors.
+Profile=1.12 A48
+DataVersion=1.12 A47
+RecordBytes=8192
+RecordsSHA256=7aec6ca491c5868d7c43d33298c910d092e8b2902df02ff634cef6bfe2cb99ef
+ConfigSHA256=a582ae4627bddda15a18b51625a16ab4d23a31730a360e4325b712edd9ea985b
+WritesEnabled=false
+PASS hash padding boundaries, unknown-profile refusal, private-field refusal and unchanged DAT bytes.
+PASS offline config/server/event writes, byte preservation, backup/checksum, restore, private/invalid-field refusal, busy process and symlink guards
+PASS native MUTIL reads the rewritten paths and completes its export
