@@ -8,7 +8,9 @@ Requirements
 ------------
 - Mystic 1.12 A49 installation with its matching docs/records.112
 - MIS, Mystic, MUTIL, MIDE and UPGRADE stopped while a write is applied
-- Linux amd64/arm64/armhf or Windows x86/x64
+- Inspection archives: Linux amd64/arm64/armhf or Windows x86/x64
+- Qualified writes: Linux amd64 A48/A49 and Windows x86/x64 A49 only
+- ARM Mystic writes remain refused until native ARM fixtures are qualified
 
 Usage
 -----
@@ -43,3 +45,16 @@ No installer, service or PATH change is performed.
 
 License: GPL-3.0-only
 Source:  https://github.com/geosone/mdatmod
+
+Locking and qualification
+-------------------------
+Windows holds a read/replace handle denying foreign write handles. Linux uses
+flock on the original inode. The tool cannot interlock with a future service
+start or a privileged filesystem path swap: disable automatic restarts and
+keep the BBS offline throughout maintenance. Renamed executables inside the
+root are detected, except for the current mdatmod process itself.
+
+Native release tests cover config/server/event writes, unchanged bytes,
+checksummed backups and restore, empty event files, invalid fields, foreign
+file locks and native/renamed processes. ARM archive tests do not qualify
+ARM native writes. Vendor fixtures are downloaded for tests, never shipped.

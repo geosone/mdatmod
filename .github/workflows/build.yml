@@ -1,8 +1,8 @@
 name: build
 
 # Builds and exercises the release archives. The writer test needs the
-# non-redistributable vendor records.112 and an isolated Mystic installation,
-# so it runs on qualified test machines, not on hosted runners.
+# vendor records.112 and an isolated Mystic installation. Hosted qualification
+# downloads checksum-pinned installers; vendor files never enter release assets.
 
 on:
   push:
