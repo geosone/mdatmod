@@ -142,7 +142,20 @@ begin
                     Continue;
                 end;
                 Folder:=ExcludeTrailingPathDelimiter(ExtractFilePath(UTF8Encode(UnicodeString(PWideChar(@Buffer[0])))));
-                Folder:=PhysicalRoot(Folder);
+                try
+                    Folder:=PhysicalRoot(Folder);
+                except
+                    // Hosted runners can retain processes whose unrelated
+                    // working image directory has already been removed.
+                    if (Name='mis.exe') or (Name='mystic.exe') or
+                       (Name='mutil.exe') or (Name='mide.exe') or
+                       (Name='upgrade.exe') or
+                       FileExists(IncludeTrailingPathDelimiter(Root)+Name) or
+                       SameText(Folder,Root) or
+                       SameText(Copy(Folder,1,Length(IncludeTrailingPathDelimiter(Root))),IncludeTrailingPathDelimiter(Root)) then
+                        raise;
+                    Continue;
+                end;
                 if SameText(Folder,Root) or
                    SameText(Copy(Folder,1,Length(IncludeTrailingPathDelimiter(Root))),IncludeTrailingPathDelimiter(Root)) then
                     raise Exception.Create('An executable from this root is running; stop it before writing.');
