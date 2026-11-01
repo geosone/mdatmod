@@ -37,3 +37,20 @@ metadata, and data is compared again immediately before replacement.
 
 No production DAT files were changed during this review. Online writes remain
 outside scope. These findings do not justify weakening profile or process checks.
+
+## Follow-up fixes for 0.2.1
+
+Windows now keeps a read/replace handle denying foreign writes, validates the
+lock/target handles and rejects backup junctions. Accessible executables under
+the root are checked independently of their names. Candidate inspection failures
+remain errors; unrelated protected system processes may have no readable image.
+Linux checks all executable paths under the root, skipping the current writer.
+Both platforms have tests for renamed processes. Empty Windows private writes
+are guarded, and native tests exercise empty event backups and restoration.
+Linux synchronizes the backup directory, root and actual DAT parent directory.
+Release CI now downloads checksum-pinned vendor installers for native Linux
+amd64 and Windows x86/x64 writer tests. ARM writes remain unqualified and refused.
+
+No tool can guarantee offline state against a new native process started after
+the final check. Normal write handles are excluded on Windows; privileged path
+swaps and non-cooperating Linux writers remain outside the locking contract.

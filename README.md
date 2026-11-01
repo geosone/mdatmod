@@ -16,11 +16,12 @@ wrappers, helper DLLs or sidecar configuration. Checksums are published beside
 the archive on GitHub.
 
 `.github/workflows/build.yml` builds and exercises every archive: Linux amd64,
-arm64 and armhf through buildx/QEMU in Debian bullseye, Windows x86/x64 with a
+arm64 and armhf through buildx/QEMU in Debian bookworm, Windows x86/x64 with a
 pinned Lazarus/FPC, including the PE machine check and the hash/refusal test.
 Tagging `v*` publishes the archives and `SHA256SUMS`. The writer test needs the
 non-redistributable vendor `records.112` and an isolated Mystic installation, so
-it stays a qualified-machine step before a tag.
+CI downloads pinned vendor installers for isolated amd64 and Windows x86/x64
+writer tests; vendor data is never included in release archives.
 
 ## Requirements
 
@@ -28,7 +29,7 @@ it stays a qualified-machine step before a tag.
 - Validate file sizes, vendor record definitions and runtime/binary identity.
 - Preserve reserved bytes and unrelated records; back up before every write.
 - Refuse writes when process/lock state cannot be established.
-- The exact MIS/Mystic running/stopped write policy still needs operator clarification.
+- Writes are explicitly permitted only while the native BBS processes are stopped.
 - No raw arbitrary offset writer and no attempt to bypass Mystic locks.
 - Tests use synthetic fixtures and isolated Mystic nodes only.
 
@@ -79,3 +80,21 @@ ASCII; no code page is guessed.
 vendor installation, then checks plans, writes, byte preservation, backups,
 restore, refusal of private/overlong fields, a stopped process and a symlinked
 DAT.
+
+## Native write qualification
+
+ARM archives currently support inspection only: native ARM Mystic write profiles
+have not been qualified. Linux x86-64 A48/A49 and Windows x86/x64 A49 are the
+qualified writer targets. No release archive implies support for other binaries.
+
+The root writer lock coordinates mdatmod instances. Windows holds a read handle
+that denies foreign writes while allowing atomic replacement. Linux holds flock
+on the target inode. These checks supplement the operator requirement to stop
+MIS, Mystic and utilities; they do not interlock with future starts or protect
+against a privileged actor swapping filesystem paths. Stop automatic service
+restarts during maintenance. Renamed executables inside the root are rejected.
+
+Native qualification also tests foreign file locks, renamed processes, installed
+mdatmod execution and empty event backups/restores. Unknown or inaccessible
+candidate BBS processes fail closed. System processes without user-mode image
+paths are skipped when they cannot correspond to a native file in the root.

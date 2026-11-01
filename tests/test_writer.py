@@ -13,7 +13,8 @@ source = Path(sys.argv[2]).resolve()
 # Native binaries keep their platform suffix; the DAT names do not.
 suffix = '.exe' if os.name == 'nt' else ''
 source_hash = hashlib.sha256((source / 'mystic.dat').read_bytes()).digest()
-with tempfile.TemporaryDirectory(prefix='mdatmod-writer-') as directory:
+with tempfile.TemporaryDirectory(prefix='mdatmod-writer-',
+                                 dir=Path(tempfile.gettempdir()).anchor if os.name == 'nt' else None) as directory:
     root = Path(directory) / 'bbs'
     root.mkdir()
     (root / 'docs').mkdir()
@@ -23,6 +24,9 @@ with tempfile.TemporaryDirectory(prefix='mdatmod-writer-') as directory:
     (root / 'data').mkdir()
     for name in ['servers.dat', 'event.dat']:
         shutil.copy2(source / 'data' / name, root / 'data' / name)
+    installed_tool = root / exe.name
+    shutil.copy2(exe, installed_tool)
+    exe = installed_tool
     dat = root / 'mystic.dat'
     original = dat.read_bytes()
 
@@ -79,26 +83,71 @@ with tempfile.TemporaryDirectory(prefix='mdatmod-writer-') as directory:
     run('restore', root, event_change['Backup'], '--apply')
     assert (root / 'data/event.dat').read_bytes() == event_before
 
+    # Empty event files exercise zero-length private backups and restoration.
+    events = root / 'data/event.dat'
+    events.write_bytes(b'')
+    empty_change = run('ban-event', root, request, '--apply')
+    assert Path(empty_change['Backup']).read_bytes() == b''
+    run('restore', root, empty_change['Backup'], '--apply')
+    assert events.read_bytes() == b''
+    events.write_bytes(event_before)
+
     if os.name != 'nt':
         import pty
-        master, slave = pty.openpty()
-        process = subprocess.Popen([str(root / 'mystic'), '-cfg'], cwd=root,
-                                   stdin=slave, stdout=slave, stderr=slave)
-        os.close(slave)
-        try:
-            os.kill(process.pid, signal.SIGSTOP)
-            before_busy = dat.read_bytes()
-            run('set', root, 'BBSName', 'Must refuse', '--apply', ok=False)
-            assert dat.read_bytes() == before_busy
-        finally:
-            process.kill()
-            process.wait()
-            os.close(master)
+        renamed = root / 'renamed-native'
+        shutil.copy2(root / 'mystic', renamed)
+        for native in (root / 'mystic', renamed):
+            master, slave = pty.openpty()
+            process = subprocess.Popen([str(native), '-cfg'], cwd=root,
+                                       stdin=slave, stdout=slave, stderr=slave)
+            os.close(slave)
+            try:
+                os.kill(process.pid, signal.SIGSTOP)
+                before_busy = dat.read_bytes()
+                run('set', root, 'BBSName', 'Must refuse', '--apply', ok=False)
+                assert dat.read_bytes() == before_busy
+            finally:
+                process.kill()
+                process.wait()
+                os.close(master)
         # A symlink cannot redirect the write target outside its qualified root.
         dat.rename(root / 'original.dat')
         dat.symlink_to(root / 'original.dat')
         run('set', root, 'BBSName', 'Must refuse', '--apply', ok=False)
+    if os.name == 'nt':
+        import ctypes
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel.CreateFileW.restype = wintypes.HANDLE
+        kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD,
+                                      wintypes.DWORD, ctypes.c_void_p,
+                                      wintypes.DWORD, wintypes.DWORD,
+                                      wintypes.HANDLE]
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        # A foreign reader that disallows replacement must prevent a write.
+        handle = kernel.CreateFileW(str(dat), 0x80000000, 1, None, 3, 0, None)
+        assert handle != wintypes.HANDLE(-1).value
+        try:
+            before_locked = dat.read_bytes()
+            run('set', root, 'BBSName', 'Locked refusal', '--apply', ok=False)
+            assert dat.read_bytes() == before_locked
+        finally:
+            kernel.CloseHandle(handle)
+        # CREATE_SUSPENDED gives a deterministic running native process without
+        # executing a login/configuration path or depending on a console window.
+        renamed = root / 'renamed-native.exe'
+        shutil.copy2(root / 'mystic.exe', renamed)
+        for native in (root / 'mystic.exe', renamed):
+            process = subprocess.Popen([str(native), '-cfg'], cwd=root,
+                                       creationflags=0x00000004)
+            try:
+                before_busy = dat.read_bytes()
+                run('set', root, 'BBSName', 'Busy refusal', '--apply', ok=False)
+                assert dat.read_bytes() == before_busy
+            finally:
+                process.kill()
+                process.wait()
     assert hashlib.sha256((source / 'mystic.dat').read_bytes()).digest() == source_hash
-guards = 'busy process and symlink guards' if os.name != 'nt' else 'Windows refusal guards'
+guards = 'busy process and symlink guards' if os.name != 'nt' else 'Windows file-lock and native/renamed-process guards'
 print('PASS offline config/server/event writes, byte preservation, backup/checksum, '
       f'restore, private/invalid-field refusal, {guards}')

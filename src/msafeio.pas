@@ -71,7 +71,7 @@ end;
 
 procedure RequireStopped(const Root:string);
 {$ifdef Linux}
-var Search:TSearchRec; Candidate, Target, Link, Name:string;
+var Search:TSearchRec; Candidate, Target, Link:string;
     ProcessInfo, FileInfo:Stat; Names:array[0..4] of string;
     I,Code,ErrorCode:Integer;
 {$endif}
@@ -85,17 +85,14 @@ begin
     Code:=FindFirst('/proc/*',faDirectory,Search);
     try
         while Code=0 do begin
-            if StrToIntDef(Search.Name,0)>0 then begin
+            if (StrToIntDef(Search.Name,0)>0) and (StrToIntDef(Search.Name,0)<>fpGetPid) then begin
                 Candidate:='/proc/'+Search.Name+'/exe';
                 if fpStat(PChar(Candidate),ProcessInfo)=0 then begin
                     Link:=fpReadLink(Candidate);
-                    if Pos(IncludeTrailingPathDelimiter(Root),Link)=1 then begin
-                        Name:=LowerCase(ExtractFileName(Link));
-                        for I:=0 to High(Names) do
-                            if (Name=Names[I]) or (Pos(Names[I]+'.',Name)=1) or
-                               (Pos(Names[I]+' (deleted)',Name)=1) then
-                                raise Exception.Create('A process still uses a native binary from this root.');
-                    end;
+                    // Reject any running executable below this root, including
+                    // copied or renamed native binaries whose inode differs.
+                    if Pos(IncludeTrailingPathDelimiter(Root),Link)=1 then
+                        raise Exception.Create('An executable from this root is running; stop it before writing.');
                     for I:=0 to High(Names) do begin
                         Target:=IncludeTrailingPathDelimiter(Root)+Names[I];
                         if (fpStat(PChar(Target),FileInfo)=0) and
@@ -117,21 +114,42 @@ begin
     if Snapshot=INVALID_HANDLE_VALUE then raise Exception.Create('Cannot enumerate processes.');
     try
         FillChar(Entry,SizeOf(Entry),0); Entry.dwSize:=SizeOf(Entry);
-        if Process32First(Snapshot,Entry) then repeat
+        if not Process32First(Snapshot,Entry) then
+            raise Exception.Create('Cannot read the process snapshot.');
+        repeat
             Name:=LowerCase(StrPas(Entry.szExeFile));
-            if (Name='mis.exe') or (Name='mystic.exe') or (Name='mutil.exe') or (Name='mide.exe') or (Name='upgrade.exe') then begin
-                Process:=OpenProcess($1000,False,Entry.th32ProcessID);
-                if Process=0 then raise Exception.Create('Cannot inspect a candidate Mystic process.');
-                try
-                    Count:=Length(Buffer);
-                    if not ImagePath(Process,0,@Buffer[0],Count) then
-                        raise Exception.Create('Cannot determine a candidate process path.');
-                    Folder:=ExcludeTrailingPathDelimiter(ExtractFilePath(UTF8Encode(UnicodeString(PWideChar(@Buffer[0])))));
-                    if SameText(PhysicalRoot(Folder),Root) then
-                        raise Exception.Create('MIS/Mystic or a native utility is running; stop it before writing.');
-                finally CloseHandle(Process); end;
+            if (Entry.th32ProcessID=0) or (Entry.th32ProcessID=GetCurrentProcessId) then Continue;
+            Process:=OpenProcess($1000,False,Entry.th32ProcessID);
+            if Process=0 then begin
+                // Protected OS processes may be inaccessible. A native name or
+                // an executable present in the target root must fail closed.
+                if (Name='mis.exe') or (Name='mystic.exe') or
+                   (Name='mutil.exe') or (Name='mide.exe') or
+                   (Name='upgrade.exe') or
+                   FileExists(IncludeTrailingPathDelimiter(Root)+Name) then
+                    raise Exception.Create('Cannot inspect a candidate Mystic process.');
+                Continue;
             end;
+            try
+                Count:=Length(Buffer);
+                if not ImagePath(Process,0,@Buffer[0],Count) then begin
+                    if (Name='mis.exe') or (Name='mystic.exe') or
+                       (Name='mutil.exe') or (Name='mide.exe') or
+                       (Name='upgrade.exe') or
+                       FileExists(IncludeTrailingPathDelimiter(Root)+Name) then
+                        raise Exception.Create('Cannot determine a candidate process path.');
+                    // System pseudo-processes can have no user-mode image.
+                    Continue;
+                end;
+                Folder:=ExcludeTrailingPathDelimiter(ExtractFilePath(UTF8Encode(UnicodeString(PWideChar(@Buffer[0])))));
+                Folder:=PhysicalRoot(Folder);
+                if SameText(Folder,Root) or
+                   SameText(Copy(Folder,1,Length(IncludeTrailingPathDelimiter(Root))),IncludeTrailingPathDelimiter(Root)) then
+                    raise Exception.Create('An executable from this root is running; stop it before writing.');
+            finally CloseHandle(Process); end;
         until not Process32Next(Snapshot,Entry);
+        if GetLastError<>ERROR_NO_MORE_FILES then
+            raise Exception.Create('Process enumeration ended unexpectedly.');
     finally CloseHandle(Snapshot); end;
     {$endif}
 end;
@@ -162,8 +180,12 @@ begin
         Handle:=CreateFileW(PWideChar(UTF8Decode(Path)),GENERIC_WRITE,0,@Attributes,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,0);
         if Handle=INVALID_HANDLE_VALUE then raise Exception.Create('Cannot create a protected new file.');
         try
-            if not WriteFile(Handle,Data[0],Length(Data),Written,nil) or (Written<>DWORD(Length(Data))) or not FlushFileBuffers(Handle) then
-                raise Exception.Create('Protected file write failed.');
+            if Length(Data)>0 then begin
+                if not WriteFile(Handle,Data[0],Length(Data),Written,nil) or (Written<>DWORD(Length(Data))) then
+                    raise Exception.Create('Protected file write failed.');
+            end;
+            if not FlushFileBuffers(Handle) then
+                raise Exception.Create('Protected file synchronization failed.');
         finally CloseHandle(Handle); end;
     finally LocalFree(HLOCAL(Descriptor)); end;
     {$endif}
@@ -195,10 +217,22 @@ begin
 end;
 {$endif}
 
+{$ifdef Linux}
+procedure SyncDirectory(const Path:string);
+var FD:LongInt;
+begin
+    FD:=fpOpen(PChar(Path),O_RDONLY or O_DIRECTORY);
+    if FD<0 then raise Exception.Create('Cannot open directory for synchronization.');
+    try
+        if fpFsync(FD)<>0 then raise Exception.Create('Directory synchronization failed. Backup retained.');
+    finally fpClose(FD); end;
+end;
+{$endif}
+
 function CommitData(const Root,TargetFile:string; const Expected, Replacement:TBytes):string;
 var Target,LockPath,Temporary,BackupDirectory,Token:string; Current:TBytes; ID:TGUID;
 {$ifdef Linux}var LockFD,DirectoryFD,TargetFD:LongInt; Original,FileInfo:Stat;{$endif}
-{$ifdef Windows}var LockHandle:THandle;{$endif}
+{$ifdef Windows}var LockHandle,TargetHandle:THandle; OriginalInfo,CurrentInfo:TByHandleFileInformation;{$endif}
 begin
     Result:=''; Temporary:='';
     Target:=IncludeTrailingPathDelimiter(PhysicalRoot(ExtractFilePath(ExpandFileName(TargetFile))))+ExtractFileName(TargetFile);
@@ -232,9 +266,32 @@ begin
     LockHandle:=CreateFileW(PWideChar(UTF8Decode(LockPath)),GENERIC_READ or GENERIC_WRITE,0,nil,OPEN_ALWAYS,FILE_ATTRIBUTE_NORMAL or $00200000,0);
     if LockHandle=INVALID_HANDLE_VALUE then raise Exception.Create('Another writer holds the root lock or the lock is unavailable.');
     {$endif}
+    {$ifdef Windows}
+    if not GetFileInformationByHandle(LockHandle,CurrentInfo) or
+       (CurrentInfo.dwFileAttributes and FILE_ATTRIBUTE_REPARSE_POINT<>0) then begin
+        CloseHandle(LockHandle);
+        raise Exception.Create('Writer lock must not be a reparse point.');
+    end;
+    {$endif}
+    {$ifdef Windows}
+    // Deny writes while allowing ReplaceFileW to atomically replace this path.
+    // Keep the original handle alive until verification finishes.
+    TargetHandle:=CreateFileW(PWideChar(UTF8Decode(Target)),GENERIC_READ,
+        FILE_SHARE_READ or FILE_SHARE_DELETE,nil,OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL or $00200000,0);
+    if TargetHandle=INVALID_HANDLE_VALUE then begin
+        CloseHandle(LockHandle);
+        raise Exception.Create('Cannot acquire the DAT read/replace guard.');
+    end;
+    {$endif}
     try
         RequireStopped(Root);
-        {$ifdef Linux}Current:=ReadLocked(TargetFD);{$else}Current:=ReadAll(Target);{$endif}
+        {$ifdef Linux}Current:=ReadLocked(TargetFD);{$else}
+        if not GetFileInformationByHandle(TargetHandle,OriginalInfo) or
+           (OriginalInfo.dwFileAttributes and FILE_ATTRIBUTE_REPARSE_POINT<>0) then
+            raise Exception.Create('Cannot establish regular DAT identity.');
+        Current:=ReadAll(Target);
+        {$endif}
         if SHA256Bytes(Current)<>SHA256Bytes(Expected) then raise Exception.Create('DAT changed after inspection; write refused.');
         BackupDirectory:=IncludeTrailingPathDelimiter(Root)+'backups';
         if not DirectoryExists(BackupDirectory) and not CreateDir(BackupDirectory) then raise Exception.Create('Cannot create backup directory.');
@@ -242,12 +299,24 @@ begin
         if (fpLStat(PChar(BackupDirectory),FileInfo)<>0) or not FPS_ISDIR(FileInfo.st_mode) then
             raise Exception.Create('Backup directory must not be a symlink.');
         {$endif}
+        {$ifdef Windows}
+        if GetFileAttributesW(PWideChar(UTF8Decode(BackupDirectory))) and FILE_ATTRIBUTE_REPARSE_POINT<>0 then
+            raise Exception.Create('Backup directory must not be a reparse point.');
+        {$endif}
         if CreateGUID(ID)<>0 then raise Exception.Create('Cannot allocate a unique transaction ID.');
         Token:=GUIDToString(ID); Delete(Token,1,1); Delete(Token,Length(Token),1);
         Result:=IncludeTrailingPathDelimiter(BackupDirectory)+'mdatmod-'+ChangeFileExt(ExtractFileName(Target),'')+'-'+Token+'.dat';
         SavePrivate(Result,Expected);
         SavePrivate(Result+'.sha256',BytesOf(SHA256Bytes(Expected)+'  '+ExtractFileName(Result)+LineEnding));
         SavePrivate(Result+'.target',BytesOf(Copy(Target,Length(IncludeTrailingPathDelimiter(Root))+1,MaxInt)+LineEnding));
+        {$ifdef Linux}
+        DirectoryFD:=fpOpen(PChar(BackupDirectory),O_RDONLY or O_DIRECTORY);
+        if DirectoryFD<0 then raise Exception.Create('Cannot open backup directory for synchronization.');
+        try
+            if fpFsync(DirectoryFD)<>0 then raise Exception.Create('Backup directory synchronization failed.');
+        finally fpClose(DirectoryFD); end;
+        {$endif}
+        {$ifdef Linux}SyncDirectory(Root);{$endif}
         Temporary:=IncludeTrailingPathDelimiter(Root)+'.mdatmod-'+Token+'.new';
         SavePrivate(Temporary,Replacement);
         {$ifdef Linux}
@@ -260,17 +329,22 @@ begin
             raise Exception.Create('DAT identity changed before commit.');
         if SHA256Bytes(ReadLocked(TargetFD))<>SHA256Bytes(Expected) then
         {$else}
+        if not GetFileInformationByHandle(TargetHandle,CurrentInfo) or
+           (CurrentInfo.nFileIndexHigh<>OriginalInfo.nFileIndexHigh) or
+           (CurrentInfo.nFileIndexLow<>OriginalInfo.nFileIndexLow) then
+            raise Exception.Create('DAT identity changed before commit.');
         if SHA256File(Target)<>SHA256Bytes(Expected) then
         {$endif}
             raise Exception.Create('DAT changed before commit; write refused.');
         {$ifdef Linux}
         if fpRename(PChar(Temporary),PChar(Target))<>0 then raise Exception.Create('Atomic DAT replacement failed.');
         Temporary:='';
-        DirectoryFD:=fpOpen(PChar(Root),O_RDONLY or O_DIRECTORY);
+        DirectoryFD:=fpOpen(PChar(ExtractFilePath(Target)),O_RDONLY or O_DIRECTORY);
         if DirectoryFD<0 then raise Exception.Create('Cannot synchronize the root directory. Backup retained.');
         try
             if fpFsync(DirectoryFD)<>0 then raise Exception.Create('Directory synchronization failed. Backup retained.');
         finally fpClose(DirectoryFD); end;
+        SyncDirectory(Root);
         {$endif}
         {$ifdef Windows}
         if not NativeReplaceFile(PWideChar(UTF8Decode(Target)),PWideChar(UTF8Decode(Temporary)),nil,0,nil,nil) then
@@ -281,7 +355,7 @@ begin
     finally
         if (Temporary<>'') and FileExists(Temporary) then SysUtils.DeleteFile(Temporary);
         {$ifdef Linux}fpClose(TargetFD); fpClose(LockFD);{$endif}
-        {$ifdef Windows}CloseHandle(LockHandle);{$endif}
+        {$ifdef Windows}CloseHandle(TargetHandle); CloseHandle(LockHandle);{$endif}
     end;
 end;
 function CommitConfig(const Root:string; const Expected, Replacement:TBytes):string;
