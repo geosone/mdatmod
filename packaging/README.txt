@@ -35,6 +35,10 @@ restore accepts only backups created by this tool.
 ROOT is the Mystic installation directory. REQUEST.ini contains one
 [Fields] section with public field names; values are printable ASCII.
 
+A49 log entry timestamp fields (get / set-config): MISLogDateFormat,
+NodeLogDateFormat, PollLogDateFormat, QWKLogDateFormat. These do not
+change rolling modes, retention or the date in daily filenames.
+
 Private fields, unknown profiles, overlong values, running instances and
 symlinked DAT files are refused. There is no support for editing a running
 production BBS: plan a maintenance window and stop the services first.

@@ -65,6 +65,29 @@ with tempfile.TemporaryDirectory(prefix='mdatmod-writer-',
     request = Path(directory) / 'fields.ini'
     request.write_text('[Fields]\nBBSName=Batch test\nDataPath=' + str(root / 'data') + '/\n')
     run('set-config', root, request, '--apply')
+    if run('inspect', root)['Profile'] == '1.12 A49':
+        # DateFmt is String[25]: one length byte and 25 reserved payload bytes.
+        # These offsets are measured against the hashed vendor records by the
+        # layout probe; no roller flags, retention or cached-writing bits move.
+        log_fields = {'MISLogDateFormat': 4582, 'NodeLogDateFormat': 4617,
+                      'PollLogDateFormat': 4652, 'QWKLogDateFormat': 4687}
+        before_logs = dat.read_bytes()
+        stamp = 'YYYYMMDD HH:II:SS'
+        request.write_text('[Fields]\n' + ''.join(k + '=' + stamp + '\n' for k in log_fields))
+        run('set-config', root, request)
+        assert dat.read_bytes() == before_logs
+        log_change = run('set-config', root, request, '--apply')
+        expected = bytearray(before_logs)
+        for field, offset in log_fields.items():
+            expected[offset:offset + 26] = bytes([len(stamp)]) + stamp.encode() + bytes(25 - len(stamp))
+            result = subprocess.run([str(exe), 'get', str(root), field], capture_output=True, text=True)
+            assert result.returncode == 0 and result.stdout.strip() == stamp, result.stderr
+        assert dat.read_bytes() == bytes(expected)
+        run('restore', root, log_change['Backup'], '--apply')
+        assert dat.read_bytes() == before_logs
+        request.write_text('[Fields]\nNodeLogDateFormat=' + 'x' * 26 + '\n')
+        run('set-config', root, request, '--apply', ok=False)
+        assert dat.read_bytes() == before_logs
     server_before = (root / 'data/servers.dat').read_bytes()
     request.write_text('[Fields]\nActive=true\nIPv4Adapter=127.0.0.1\nPort=24554\nSSLPort=24553\n')
     server_change = run('set-server', root, 'BINKP', request, '--apply')

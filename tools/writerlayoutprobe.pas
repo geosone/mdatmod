@@ -62,6 +62,9 @@ begin
     Check('Config.LogMIS.Size',@Config.LogMIS.Size,@Config,SizeOf(Config.LogMIS.Size),4577,4);
     Check('Config.LogMIS.Cached',@Config.LogMIS.Cached,@Config,SizeOf(Config.LogMIS.Cached),4581,1);
     Check('Config.LogMIS.DateFmt',@Config.LogMIS.DateFmt,@Config,SizeOf(Config.LogMIS.DateFmt),4582,26);
+    Check('Config.LogNode.DateFmt',@Config.LogNode.DateFmt,@Config,SizeOf(Config.LogNode.DateFmt),4617,26);
+    Check('Config.LogPOLL.DateFmt',@Config.LogPOLL.DateFmt,@Config,SizeOf(Config.LogPOLL.DateFmt),4652,26);
+    Check('Config.LogQWK.DateFmt',@Config.LogQWK.DateFmt,@Config,SizeOf(Config.LogQWK.DateFmt),4687,26);
 {$endif}
     Writeln('Status=PASS');
 end.

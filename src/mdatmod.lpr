@@ -6,7 +6,7 @@ uses Classes, SysUtils, Sockets, msha256, mprofiles, msafeio, mrequest;
 
 procedure Usage;
 begin
-    Writeln('mdatmod 0.3.0 - qualified offline Mystic DAT tool');
+    Writeln('mdatmod 0.4.0 - qualified offline Mystic DAT tool');
     Writeln('  mdatmod inspect ROOT');
     Writeln('  mdatmod get ROOT FIELD');
     Writeln('  mdatmod set ROOT FIELD VALUE [--apply]');
@@ -93,6 +93,33 @@ begin
         else
             Result := Result + '\x' + IntToHex(Value, 2);
     end;
+end;
+
+// A49 vendor RecConfig has four consecutive RecLogRoller records, 35 bytes
+// each. Verified by tools/writerlayoutprobe.pas against the hashed records.112.
+// DateFmt is at record-relative zero-based offset 9: String[25] reserves
+// 26 bytes (one length byte plus 25 payload bytes). No other log field changes.
+function FindLogDateField(Profile: Integer; const Name: string; out Field: TField): Boolean;
+var
+    Base: Integer;
+begin
+    Result := False;
+    if Profiles[Profile].Name <> '1.12 A49' then
+        Exit;
+    if SameText(Name, 'MISLogDateFormat') then
+        Base := 4573
+    else if SameText(Name, 'NodeLogDateFormat') then
+        Base := 4608
+    else if SameText(Name, 'PollLogDateFormat') then
+        Base := 4643
+    else if SameText(Name, 'QWKLogDateFormat') then
+        Base := 4678
+    else
+        Exit;
+    Field.Name := Name;
+    Field.Offset := Base + 9;
+    Field.Maximum := 25;
+    Result := True;
 end;
 
 function ReadRaw(const Path:string):TBytes;
@@ -202,6 +229,7 @@ var Root,Command,RequestPath,Key,Value,Path,Backup,Protocol,Name:string;
     Apply,Found:Boolean;
     Config,Before,After:TBytes;
     Request:TStringList;
+    LogField:TField;
 begin
     Command:=LowerCase(ParamStr(1));
     if Command='set-server' then begin
@@ -231,7 +259,10 @@ begin
                     end;
                 // A49 RecLogRoller facts from the qualified vendor records.
                 if (Profiles[Profile].Name='1.12 A49') and not Found then begin
-                    if SameText(Key,'MISLogDateFormat') then begin PutString(After,4582,25,Value); Found:=True; end
+                    if FindLogDateField(Profile, Key, LogField) then begin
+                        PutString(After, LogField.Offset, LogField.Maximum, Value);
+                        Found := True;
+                    end
                     else if SameText(Key,'MISLogLevel') then begin PutNumber(After,4573,1,3,Value); if After[4573]=0 then raise Exception.Create('Log level cannot be zero.'); Found:=True; end
                     else if SameText(Key,'MISLogRollType') then begin PutNumber(After,4574,1,2,Value); Found:=True; end
                     else if SameText(Key,'MISLogFiles') then begin PutNumber(After,4575,2,65535,Value); Found:=True; end
@@ -327,6 +358,7 @@ var
     Command, Root: string;
     Profile, I: Integer;
     Data: TBytes;
+    LogField: TField;
 begin
     if (ParamCount = 0) or (ParamStr(1) = '--help') then
     begin
@@ -386,6 +418,11 @@ begin
                 Writeln(SafeString(Data, Profiles[Profile].Fields[I]));
                 Exit;
             end;
+        if FindLogDateField(Profile, ParamStr(3), LogField) then
+        begin
+            Writeln(SafeString(Data, LogField));
+            Exit;
+        end;
         raise Exception.Create('Field is not in the public configuration allowlist.');
     end;
     raise Exception.Create('Unsupported command. Use --help.');

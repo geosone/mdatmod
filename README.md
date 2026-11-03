@@ -71,7 +71,11 @@ mdatmod check-offline ROOT
 ```
 
 `set` covers the public mystic.dat string fields; `set-config` also covers the
-A49 MIS log roller fields. `set-server` edits one protocol record in
+A49 MIS log roller fields and all four A49 log timestamp formats.
+`get` reads `MISLogDateFormat`, `NodeLogDateFormat`, `PollLogDateFormat` and
+`QWKLogDateFormat`; batch `set-config` writes these qualified String[25] fields
+without changing retention, rolling mode or caching. The filename date and
+the per-entry timestamp are separate: DateFmt formats log entries. `set-server` edits one protocol record in
 servers.dat; `ban-event` creates or updates the managed IP Blocked event.
 Requests are a small INI with one `[Fields]` section. Values are printable
 ASCII; no code page is guessed.
