@@ -73,3 +73,5 @@ A49 archive-count fields (get / set-config): MISLogFiles, NodeLogFiles,
 PollLogFiles, QWKLogFiles. Values are 0..65535; zero disables the native
 archive-count limit so an external maintenance policy can manage expiry.
 Rolling modes, caching and timestamps are separate and remain unchanged.
+
+Help: mdatmod --help, -h, /h or /? (also shown without arguments).

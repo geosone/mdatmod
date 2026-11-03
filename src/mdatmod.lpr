@@ -6,12 +6,14 @@ uses Classes, SysUtils, Sockets, msha256, mprofiles, msafeio, mrequest;
 
 procedure Usage;
 begin
-    Writeln('mdatmod 0.4.1 - qualified offline Mystic DAT tool');
+    Writeln('mdatmod 0.4.2 - qualified offline Mystic DAT tool');
+    Writeln('  mdatmod --help | -h | /h | /?');
     Writeln('  mdatmod inspect ROOT');
     Writeln('  mdatmod get ROOT FIELD');
     Writeln('  mdatmod set ROOT FIELD VALUE [--apply]');
     Writeln('  mdatmod restore ROOT BACKUP [--apply]');
     Writeln('  mdatmod profile ROOT');
+    Writeln('  mdatmod check-offline ROOT');
     Writeln('  mdatmod set-config ROOT REQUEST.ini [--apply]');
     Writeln('  mdatmod set-server ROOT PROTOCOL REQUEST.ini [--apply]');
     Writeln('  mdatmod disable-servers ROOT [--apply]');
@@ -389,7 +391,9 @@ var
     Data: TBytes;
     LogField: TField;
 begin
-    if (ParamCount = 0) or (ParamStr(1) = '--help') then
+    if (ParamCount = 0) or SameText(ParamStr(1), '--help') or
+        SameText(ParamStr(1), '-h') or SameText(ParamStr(1), '/h') or
+        (ParamStr(1) = '/?') then
     begin
         Usage;
         Exit;

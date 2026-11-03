@@ -117,3 +117,7 @@ little-endian two-byte RecLogRoller.Files Word, accepting 0..65535. Zero disable
 Mystic's own archive-count limit; external maintenance can then own expiry.
 Other profiles remain rejected for these fields. Tests qualify preview,
 whole-record byte preservation, numeric range rejection, readback and restore.
+
+Command-line help is available with `--help`, `-h`, `/h` or `/?`, or by
+running mdatmod without arguments. Help returns exit code zero and does not
+require a Mystic installation. `/H` is accepted as well.
