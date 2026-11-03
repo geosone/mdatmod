@@ -88,6 +88,29 @@ with tempfile.TemporaryDirectory(prefix='mdatmod-writer-',
         request.write_text('[Fields]\nNodeLogDateFormat=' + 'x' * 26 + '\n')
         run('set-config', root, request, '--apply', ok=False)
         assert dat.read_bytes() == before_logs
+    if run('inspect', root)['Profile'] == '1.12 A49':
+        # Vendor RecLogRoller.Files: a two-byte little-endian Word at +2.
+        # Zero disables Mystic's own archive-count limit; modes remain intact.
+        file_fields = {'MISLogFiles': 4575, 'NodeLogFiles': 4610,
+                       'PollLogFiles': 4645, 'QWKLogFiles': 4680}
+        before_files = dat.read_bytes()
+        for value in (513, 0):
+            request.write_text('[Fields]\n' + ''.join(k + '=' + str(value) + '\n' for k in file_fields))
+            run('set-config', root, request)
+            assert dat.read_bytes() == before_files
+            changed = run('set-config', root, request, '--apply')
+            expected = bytearray(before_files)
+            for field, offset in file_fields.items():
+                expected[offset:offset + 2] = value.to_bytes(2, 'little')
+                result = subprocess.run([str(exe), 'get', str(root), field], capture_output=True, text=True)
+                assert result.returncode == 0 and result.stdout.strip() == str(value), result.stderr
+            assert dat.read_bytes() == bytes(expected)
+            run('restore', root, changed['Backup'], '--apply')
+            assert dat.read_bytes() == before_files
+        for value in ('-1', '65536', 'invalid'):
+            request.write_text('[Fields]\nNodeLogFiles=' + value + '\n')
+            run('set-config', root, request, '--apply', ok=False)
+            assert dat.read_bytes() == before_files
     server_before = (root / 'data/servers.dat').read_bytes()
     request.write_text('[Fields]\nActive=true\nIPv4Adapter=127.0.0.1\nPort=24554\nSSLPort=24553\n')
     server_change = run('set-server', root, 'BINKP', request, '--apply')

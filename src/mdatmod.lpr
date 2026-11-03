@@ -6,7 +6,7 @@ uses Classes, SysUtils, Sockets, msha256, mprofiles, msafeio, mrequest;
 
 procedure Usage;
 begin
-    Writeln('mdatmod 0.4.0 - qualified offline Mystic DAT tool');
+    Writeln('mdatmod 0.4.1 - qualified offline Mystic DAT tool');
     Writeln('  mdatmod inspect ROOT');
     Writeln('  mdatmod get ROOT FIELD');
     Writeln('  mdatmod set ROOT FIELD VALUE [--apply]');
@@ -119,6 +119,32 @@ begin
     Field.Name := Name;
     Field.Offset := Base + 9;
     Field.Maximum := 25;
+    Result := True;
+end;
+
+// A49 vendor RecLogRoller.Files is a little-endian Word at record-relative
+// zero-based offset 2, reserving exactly two bytes. Record bases and storage
+// widths are checked by writerlayoutprobe against the hashed records.112.
+function FindLogFilesField(Profile: Integer; const Name: string; out Field: TField): Boolean;
+var
+    Base: Integer;
+begin
+    Result := False;
+    if Profiles[Profile].Name <> '1.12 A49' then
+        Exit;
+    if SameText(Name, 'MISLogFiles') then
+        Base := 4573
+    else if SameText(Name, 'NodeLogFiles') then
+        Base := 4608
+    else if SameText(Name, 'PollLogFiles') then
+        Base := 4643
+    else if SameText(Name, 'QWKLogFiles') then
+        Base := 4678
+    else
+        Exit;
+    Field.Name := Name;
+    Field.Offset := Base + 2;
+    Field.Maximum := 2;
     Result := True;
 end;
 
@@ -265,7 +291,10 @@ begin
                     end
                     else if SameText(Key,'MISLogLevel') then begin PutNumber(After,4573,1,3,Value); if After[4573]=0 then raise Exception.Create('Log level cannot be zero.'); Found:=True; end
                     else if SameText(Key,'MISLogRollType') then begin PutNumber(After,4574,1,2,Value); Found:=True; end
-                    else if SameText(Key,'MISLogFiles') then begin PutNumber(After,4575,2,65535,Value); Found:=True; end
+                    else if FindLogFilesField(Profile, Key, LogField) then begin
+                        PutNumber(After, LogField.Offset, LogField.Maximum, 65535, Value);
+                        Found := True;
+                    end
                     else if SameText(Key,'MISLogSize') then begin PutNumber(After,4577,4,High(LongWord),Value); Found:=True; end
                     else if SameText(Key,'MISLogCached') then begin PutNumber(After,4581,1,1,Value,True); Found:=True; end;
                 end;
@@ -421,6 +450,11 @@ begin
         if FindLogDateField(Profile, ParamStr(3), LogField) then
         begin
             Writeln(SafeString(Data, LogField));
+            Exit;
+        end;
+        if FindLogFilesField(Profile, ParamStr(3), LogField) then
+        begin
+            Writeln(Word(Data[LogField.Offset]) or (Word(Data[LogField.Offset + 1]) shl 8));
             Exit;
         end;
         raise Exception.Create('Field is not in the public configuration allowlist.');

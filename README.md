@@ -110,3 +110,10 @@ their actual kernel behavior. Vendor ARM32 executables require the legacy
 /lib/ld-linux.so.3 loader name; the qualification image provides an alias to
 the hard-float loader inside disposable containers only. See the source
 qualification report for exact vendor hashes and the six native test runs.
+
+A49 archive retention is exposed through `get` / `set-config` fields
+MISLogFiles, NodeLogFiles, PollLogFiles and QWKLogFiles. Each is the vendor's
+little-endian two-byte RecLogRoller.Files Word, accepting 0..65535. Zero disables
+Mystic's own archive-count limit; external maintenance can then own expiry.
+Other profiles remain rejected for these fields. Tests qualify preview,
+whole-record byte preservation, numeric range rejection, readback and restore.

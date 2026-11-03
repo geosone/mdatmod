@@ -68,3 +68,8 @@ their actual kernel behavior. Vendor ARM32 executables require the legacy
 /lib/ld-linux.so.3 loader name; the qualification image provides an alias to
 the hard-float loader inside disposable containers only. See the source
 qualification report for exact vendor hashes and the six native test runs.
+
+A49 archive-count fields (get / set-config): MISLogFiles, NodeLogFiles,
+PollLogFiles, QWKLogFiles. Values are 0..65535; zero disables the native
+archive-count limit so an external maintenance policy can manage expiry.
+Rolling modes, caching and timestamps are separate and remain unchanged.
