@@ -66,6 +66,29 @@ with tempfile.TemporaryDirectory(prefix='mdatmod-writer-',
     request.write_text('[Fields]\nBBSName=Batch test\nDataPath=' + str(root / 'data') + '/\n')
     run('set-config', root, request, '--apply')
     if run('inspect', root)['Profile'] == '1.12 A49':
+        # A49 codepage enums are measured one-byte fields and native -cfg
+        # round trips establish each name. Writes must touch only that byte.
+        for field, offset, labels in [
+            ('LocalCodePage', 1247, ['CP437', 'UTF8']),
+            ('StartCodePage', 1450, ['CP437', 'UTF8']),
+            ('AskCodePage', 2007, ['Detect', 'Ask', 'CP437', 'UTF8'])
+        ]:
+            for value, label in enumerate(labels):
+                request.write_text('[Fields]\n' + field + '=' + label + '\n')
+                before_write = dat.read_bytes()
+                run('set-config', root, request)
+                assert dat.read_bytes() == before_write
+                run('set-config', root, request, '--apply')
+                expected = bytearray(before_write)
+                expected[offset] = value
+                assert dat.read_bytes() == expected
+                output = subprocess.check_output([str(exe), 'get', str(root), field], text=True).strip()
+                assert output == label
+            for invalid in ['850', '1252', '1', 'AUTO', 'UTF16']:
+                request.write_text('[Fields]\n' + field + '=' + invalid + '\n')
+                before_write = dat.read_bytes()
+                run('set-config', root, request, '--apply', ok=False)
+                assert dat.read_bytes() == before_write
         # DateFmt is String[25]: one length byte and 25 reserved payload bytes.
         # These offsets are measured against the hashed vendor records by the
         # layout probe; no roller flags, retention or cached-writing bits move.

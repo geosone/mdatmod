@@ -4,7 +4,7 @@
 # which the Sockets unit needs; trixie and newer stay forward compatible.
 FROM debian:bookworm-slim AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends libc6-dev fp-compiler fp-units-fcl fp-units-base make ca-certificates && rm -rf /var/lib/apt/lists/*
-ARG VERSION=0.4.2
+ARG VERSION=0.4.3
 WORKDIR /build
 COPY . .
 RUN make \

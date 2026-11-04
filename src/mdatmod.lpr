@@ -6,7 +6,7 @@ uses Classes, SysUtils, Sockets, msha256, mprofiles, msafeio, mrequest;
 
 procedure Usage;
 begin
-    Writeln('mdatmod 0.4.2 - qualified offline Mystic DAT tool');
+    Writeln('mdatmod 0.4.3 - qualified offline Mystic DAT tool');
     Writeln('  mdatmod --help | -h | /h | /?');
     Writeln('  mdatmod inspect ROOT');
     Writeln('  mdatmod get ROOT FIELD');
@@ -95,6 +95,59 @@ begin
         else
             Result := Result + '\x' + IntToHex(Value, 2);
     end;
+end;
+
+// A49 RecConfig, measured against the hashed vendor records.112 by
+// writerlayoutprobe.pas. Each field is one Byte (one-byte total reservation,
+// no string length prefix). Native A49 -cfg round trips qualified the enums.
+function FindCodePageField(Profile: Integer; const Name: string; out Offset: Integer): Boolean;
+begin
+    Result := False;
+    if Profiles[Profile].Name <> '1.12 A49' then
+        Exit;
+    if SameText(Name, 'LocalCodePage') then
+        Offset := 1247
+    else if SameText(Name, 'StartCodePage') then
+        Offset := 1450
+    else if SameText(Name, 'AskCodePage') then
+        Offset := 2007
+    else
+        Exit;
+    Result := True;
+end;
+
+function CodePageName(const Name: string; Value: Byte): string;
+begin
+    if SameText(Name, 'AskCodePage') then
+    begin
+        case Value of
+            0: Exit('Detect');
+            1: Exit('Ask');
+            2: Exit('CP437');
+            3: Exit('UTF8');
+        end;
+    end
+    else
+    begin
+        case Value of
+            0: Exit('CP437');
+            1: Exit('UTF8');
+        end;
+    end;
+    raise Exception.Create('Unknown native codepage value.');
+end;
+
+function CodePageValue(const Name, Value: string): Byte;
+var
+    I, Maximum: Integer;
+begin
+    Maximum := 1;
+    if SameText(Name, 'AskCodePage') then
+        Maximum := 3;
+    for I := 0 to Maximum do
+        if SameText(Value, CodePageName(Name, I)) then
+            Exit(I);
+    raise Exception.Create('Use a symbolic codepage name, not an unqualified numeric enum.');
 end;
 
 // A49 vendor RecConfig has four consecutive RecLogRoller records, 35 bytes
@@ -291,6 +344,12 @@ begin
                         PutString(After, LogField.Offset, LogField.Maximum, Value);
                         Found := True;
                     end
+                    else if FindCodePageField(Profile, Key, Offset) then begin
+                        // Validate the existing byte before replacing it.
+                        CodePageName(Key, After[Offset]);
+                        After[Offset] := CodePageValue(Key, Value);
+                        Found := True;
+                    end
                     else if SameText(Key,'MISLogLevel') then begin PutNumber(After,4573,1,3,Value); if After[4573]=0 then raise Exception.Create('Log level cannot be zero.'); Found:=True; end
                     else if SameText(Key,'MISLogRollType') then begin PutNumber(After,4574,1,2,Value); Found:=True; end
                     else if FindLogFilesField(Profile, Key, LogField) then begin
@@ -454,6 +513,11 @@ begin
         if FindLogDateField(Profile, ParamStr(3), LogField) then
         begin
             Writeln(SafeString(Data, LogField));
+            Exit;
+        end;
+        if FindCodePageField(Profile, ParamStr(3), I) then
+        begin
+            Writeln(CodePageName(ParamStr(3), Data[I]));
             Exit;
         end;
         if FindLogFilesField(Profile, ParamStr(3), LogField) then

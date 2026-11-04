@@ -121,3 +121,24 @@ whole-record byte preservation, numeric range rejection, readback and restore.
 Command-line help is available with `--help`, `-h`, `/h` or `/?`, or by
 running mdatmod without arguments. Help returns exit code zero and does not
 require a Mystic installation. `/H` is accepted as well.
+
+### A49 console and login codepages
+
+`set-config` accepts symbolic `LocalCodePage=CP437|UTF8`,
+`StartCodePage=CP437|UTF8` and `AskCodePage=Detect|Ask|CP437|UTF8`.
+`get ROOT FIELD` returns the symbolic name. Numeric codepage identifiers are
+rejected: Mystic's stored enums are not Windows codepage numbers.
+
+These three fields are qualified for A49 only. Compiling the original, hashed
+`records.112` establishes zero-based RecConfig byte offsets 1247, 1450 and 2007;
+each is a Byte with a one-byte total reservation. The original A49 Linux
+`mystic -cfg` was used in an isolated, path-remapped fixture to select every
+Ask CodePage option and save/reopen the record: Detect=0, Ask=1, CP437=2, UTF8=3.
+Local and Start codepage selectors use CP437=0, UTF8=1. The layout probe checks
+the offsets; writer tests require exact single-byte changes and reject unsupported
+values without touching the DAT. Existing binary, stopped-process, backup and
+profile guards remain in force. Older profiles are not assigned A49 offsets.
+
+Mystic's [Login/Matrix documentation](https://wiki.mysticbbs.com/doku.php?id=config_login_matrix)
+distinguishes local Unix output from remote negotiation and CP437 storage. A
+terminal using UTF-8 does not justify converting Mystic's stored DAT/ANSI data.

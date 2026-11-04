@@ -34,6 +34,12 @@ begin
     Check('Config.BBSName',@Config.BBSName,@Config,SizeOf(Config.BBSName),989,31);
     Check('Config.BBSLocation',@Config.BBSLocation,@Config,SizeOf(Config.BBSLocation),1020,31);
     Check('Config.SysopName',@Config.SysopName,@Config,SizeOf(Config.SysopName),1051,31);
+{$ifdef PROFILE_A49}
+    // RecConfig Byte fields: the total reservation and payload are one byte.
+    Check('Config.LocalCodePage',@Config.LocalCodePage,@Config,SizeOf(Config.LocalCodePage),1247,1);
+    Check('Config.StartCodePage',@Config.StartCodePage,@Config,SizeOf(Config.StartCodePage),1450,1);
+    Check('Config.AskCodePage',@Config.AskCodePage,@Config,SizeOf(Config.AskCodePage),2007,1);
+{$endif}
     Check('Server.Active',@Server.Active,@Server,SizeOf(Server.Active),0,1);
     Check('Server.IPv4Adapter',@Server.IPv4Adapter,@Server,SizeOf(Server.IPv4Adapter),1,20);
     Check('Server.IPv6Adapter',@Server.IPv6Adapter,@Server,SizeOf(Server.IPv6Adapter),21,40);
