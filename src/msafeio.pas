@@ -260,10 +260,17 @@ begin
     if Copy(Target,1,Length(IncludeTrailingPathDelimiter(Root)))<>IncludeTrailingPathDelimiter(Root) then
     {$endif}
         raise Exception.Create('DAT target must remain inside the root.');
-    if (ExtractFileName(Target)<>'mystic.dat') and (ExtractFileName(Target)<>'servers.dat') and (ExtractFileName(Target)<>'event.dat') then
+    if (ExtractFileName(Target)<>'mystic.dat') and (ExtractFileName(Target)<>'servers.dat') and
+        (ExtractFileName(Target)<>'event.dat') and (ExtractFileName(Target)<>'archive.dat') then
         raise Exception.Create('Unsupported DAT target.');
-    if (Length(Expected)<>Length(Replacement)) and (ExtractFileName(Target)<>'event.dat') then
+    if (Length(Expected)<>Length(Replacement)) and (ExtractFileName(Target)<>'event.dat') and
+        (ExtractFileName(Target)<>'archive.dat') then
         raise Exception.Create('Record size must not change.');
+    // set-archive may append whole 281-byte RecArchive records; restore may
+    // remove them again.
+    if (ExtractFileName(Target)='archive.dat') and ((Length(Replacement) mod 281<>0) or
+       (Length(Replacement)>1048576)) then
+        raise Exception.Create('Archive data must contain complete bounded records.');
     if (ExtractFileName(Target)='event.dat') and ((Length(Replacement) mod 640<>0) or
        (Length(Replacement)>1048576)) then
         raise Exception.Create('Event data must contain complete bounded records.');

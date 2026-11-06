@@ -2,11 +2,11 @@ program mdatmod;
 
 {$mode objfpc}{$H+}
 
-uses Classes, SysUtils, Sockets, msha256, mprofiles, msafeio, mrequest;
+uses Classes, SysUtils, Sockets, msha256, mprofiles, msafeio, mrequest, marchive;
 
 procedure Usage;
 begin
-    Writeln('mdatmod 0.4.3 - qualified offline Mystic DAT tool');
+    Writeln('mdatmod 0.5.0 - qualified offline Mystic DAT tool');
     Writeln('  mdatmod --help | -h | /h | /?');
     Writeln('  mdatmod inspect ROOT');
     Writeln('  mdatmod get ROOT FIELD');
@@ -18,6 +18,9 @@ begin
     Writeln('  mdatmod set-server ROOT PROTOCOL REQUEST.ini [--apply]');
     Writeln('  mdatmod disable-servers ROOT [--apply]');
     Writeln('  mdatmod ban-event ROOT REQUEST.ini [--apply]');
+    Writeln('  mdatmod get-archive ROOT EXT OSTYPE');
+    Writeln('  mdatmod set-archive ROOT EXT OSTYPE REQUEST.ini [--apply]');
+    Writeln('OSTYPE is Windows, Linux, macOS or All; archive records need A49.');
     Writeln('  mdatmod --hash FILE');
     Writeln('  mdatmod --self-test');
     Writeln('Writes require a qualified native binary, stopped MIS/Mystic and --apply.');
@@ -282,6 +285,10 @@ begin
             if (Length(Replacement) mod 384<>0) or (Length(Replacement)<>Length(Original)) then raise Exception.Create('Unknown server backup layout.');
         end else if ExtractFileName(TargetPath)='event.dat' then begin
             if Length(Replacement) mod 640<>0 then raise Exception.Create('Unknown event backup layout.');
+        end else if ExtractFileName(TargetPath)='archive.dat' then begin
+            // Restoring may remove records an earlier set-archive appended.
+            if Length(Replacement) mod ArchiveRecordSize<>0 then
+                raise Exception.Create('Unknown archive backup layout.');
         end else raise Exception.Create('Unsupported backup target.');
     end;
     if SHA256Bytes(Original)=SHA256Bytes(Replacement) then begin
@@ -443,6 +450,98 @@ begin
     finally Request.Free; end;
 end;
 
+// DataPath (RecConfig offset 98, String[80]) locates the data files. It must
+// be absolute, so a relative stored path cannot depend on the current directory.
+function DataFile(const Config: TBytes; const Name: string): string;
+var
+    Value: string;
+begin
+    Value := GetString(Config, 98, 80);
+    {$ifdef Windows}
+    if ExtractFileDrive(Value) = '' then
+    {$else}
+    if (Value = '') or (Value[1] <> '/') then
+    {$endif}
+        raise Exception.Create('Native data directory must be absolute.');
+    Result := IncludeTrailingPathDelimiter(PhysicalRoot(Value)) + Name;
+end;
+
+procedure ArchiveCommand;
+var
+    Command, Root, Extension, Path, Backup: string;
+    Profile, Offset: Integer;
+    OSType: Byte;
+    Apply: Boolean;
+    Config, Before, After: TBytes;
+    Request: TStringList;
+begin
+    Command := LowerCase(ParamStr(1));
+    Apply := False;
+    if Command = 'get-archive' then
+    begin
+        if ParamCount <> 4 then
+            raise Exception.Create('Use get-archive ROOT EXT OSTYPE.');
+    end
+    else
+    begin
+        if (ParamCount <> 5) and ((ParamCount <> 6) or (ParamStr(6) <> '--apply')) then
+            raise Exception.Create('Use set-archive ROOT EXT OSTYPE REQUEST [--apply].');
+        Apply := ParamCount = 6;
+    end;
+    Extension := NormalizeArchiveExtension(ParamStr(3));
+    OSType := ArchiveOSTypeValue(ParamStr(4));
+
+    Root := PhysicalRoot(ParamStr(2));
+    Profile := IdentifyProfile(Root);
+    // RecArchive is measured for the A49 records only.
+    if Profiles[Profile].Name <> '1.12 A49' then
+        raise Exception.Create('Archive records are qualified for A49 only.');
+    if Command = 'set-archive' then
+        QualifyWriterBinary(Root, Profiles[Profile].Name);
+    Config := ReadConfig(Root, Profile);
+    Path := DataFile(Config, 'archive.dat');
+    Before := ReadRaw(Path);
+
+    if Command = 'get-archive' then
+    begin
+        Offset := FindArchiveRecord(Before, Extension, OSType);
+        if Offset < 0 then
+            Writeln('Found=false')
+        else
+            WriteArchiveRecord(Before, Offset);
+        Exit;
+    end;
+
+    Request := LoadRequest(ParamStr(5));
+    try
+        After := Copy(Before);
+        ApplyArchiveRequest(After, Extension, OSType, Request);
+    finally
+        Request.Free;
+    end;
+    if SHA256Bytes(Before) = SHA256Bytes(After) then
+    begin
+        Writeln('Action=Unchanged');
+        Exit;
+    end;
+    if not Apply then
+    begin
+        Writeln('Action=Plan');
+        Writeln('Operation=', Command);
+        if Length(After) <> Length(Before) then
+            Writeln('Record=New')
+        else
+            Writeln('Record=Existing');
+        Writeln('RequiresStopped=true');
+        Exit;
+    end;
+    Backup := CommitData(Root, Path, Before, After);
+    Writeln('Action=Applied');
+    Writeln('Operation=', Command);
+    Writeln('Backup=', Backup);
+    Writeln('ArchiveSHA256=', SHA256Bytes(After));
+end;
+
 procedure Run;
 var
     Command, Root: string;
@@ -484,6 +583,11 @@ begin
     end;
     if (Command='set-config') or (Command='set-server') or (Command='disable-servers') or (Command='ban-event') then begin
         BatchCommand; Exit;
+    end;
+    if (Command = 'get-archive') or (Command = 'set-archive') then
+    begin
+        ArchiveCommand;
+        Exit;
     end;
     if (Command='set') or (Command='restore') then begin
         WriteCommand; Exit;

@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  MDATMOD_VERSION: 0.4.3
+  MDATMOD_VERSION: 0.5.0
 
 jobs:
   linux-build:

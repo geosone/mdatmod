@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory(prefix='mdatmod-writer-',
     for name in [f'mystic{suffix}', f'mis{suffix}', f'mutil{suffix}', 'mystic.dat']:
         shutil.copy2(source / name, root / name)
     (root / 'data').mkdir()
-    for name in ['servers.dat', 'event.dat']:
+    for name in ['servers.dat', 'event.dat', 'archive.dat']:
         shutil.copy2(source / 'data' / name, root / 'data' / name)
     installed_tool = root / exe.name
     shutil.copy2(exe, installed_tool)
@@ -134,6 +134,87 @@ with tempfile.TemporaryDirectory(prefix='mdatmod-writer-',
             request.write_text('[Fields]\nNodeLogFiles=' + value + '\n')
             run('set-config', root, request, '--apply', ok=False)
             assert dat.read_bytes() == before_files
+    if run('inspect', root)['Profile'] == '1.12 A49':
+        # RecArchive (281 bytes): OSType Byte @0, Active Boolean @1,
+        # Desc String[30] @2, Ext String[4] @33, Pack/Unpack/View String[80]
+        # @38/@119/@200, measured by the layout probe against records.112.
+        archives = root / 'data/archive.dat'
+        archive_before = archives.read_bytes()
+        assert len(archive_before) % 281 == 0
+
+        def get_archive(ext, os_type):
+            output = subprocess.check_output([str(exe), 'get-archive', str(root), ext, os_type], text=True)
+            return dict(line.split('=', 1) for line in output.splitlines())
+
+        def find_record(data, ext, os_type):
+            hits = [offset for offset in range(0, len(data), 281)
+                    if data[offset] == os_type and data[offset + 34:offset + 34 + data[offset + 33]] == ext]
+            assert len(hits) == 1
+            return hits[0]
+
+        def field(text, size):
+            # size is the total reservation: length byte plus payload bytes.
+            return bytes([len(text)]) + text.encode() + bytes(size - 1 - len(text))
+
+        arj = get_archive('arj', 'All')
+        assert arj['Found'] == 'true' and arj['Active'] in ('true', 'false')
+        assert get_archive('ARC', 'All') == {'Found': 'false'}
+        unpack = 'arj e -y "-ht%3" "%1" "%2"'
+        request.write_text('[Fields]\nActive=true\nUnpack=' + unpack + '\n')
+        run('set-archive', root, 'ARJ', 'All', request)
+        assert archives.read_bytes() == archive_before
+        arj_change = run('set-archive', root, 'ARJ', 'All', request, '--apply')
+        after = archives.read_bytes()
+        offset = find_record(archive_before, b'ARJ', 3)
+        expected = bytearray(archive_before)
+        expected[offset + 1] = 1
+        expected[offset + 119:offset + 200] = field(unpack, 81)
+        assert after == bytes(expected)
+        assert get_archive('ARJ', 'All')['Unpack'] == unpack
+        assert run('set-archive', root, 'ARJ', 'All', request, '--apply')['Action'] == 'Unchanged'
+        run('restore', root, arj_change['Backup'], '--apply')
+        assert archives.read_bytes() == archive_before
+
+        # A missing pair is appended; existing records keep their numbers.
+        request.write_text('[Fields]\nActive=true\nDescription=SEA ARC\n'
+                           'Pack=arc aq "%1" "%2"\nUnpack=arc eo "%1" "%2"\n')
+        assert run('set-archive', root, 'ARC', 'Windows', request)['Record'] == 'New'
+        assert archives.read_bytes() == archive_before
+        arc_change = run('set-archive', root, 'ARC', 'Windows', request, '--apply')
+        after = archives.read_bytes()
+        assert after[:len(archive_before)] == archive_before and len(after) == len(archive_before) + 281
+        new = after[len(archive_before):]
+        assert new[0] == 0 and new[1] == 1 and new[33:38] == field('ARC', 5)
+        assert new[2:33] == field('SEA ARC', 31) and new[200:281] == bytes(81)
+        assert get_archive('ARC', 'Windows')['Pack'] == 'arc aq "%1" "%2"'
+        assert get_archive('ARC', 'Linux') == {'Found': 'false'}
+        run('restore', root, arc_change['Backup'], '--apply')
+        assert archives.read_bytes() == archive_before
+
+        # Refusals leave the file untouched.
+        refusals = [
+            ('ARC', 'Windows', '[Fields]\nPack=arc a "%1" "%2"\n'),
+            ('ARJ', 'All', '[Fields]\nUnpack=' + 'x' * 81 + '\n'),
+            ('ARJ', 'All', '[Fields]\nDescription=' + 'x' * 31 + '\n'),
+            ('ARJ', 'All', '[Fields]\nOSType=0\n'),
+            ('ARJ', 'All', '[Fields]\nActive=yes\n'),
+            ('ARJ', 'OS2', '[Fields]\nActive=true\n'),
+            ('ARJ', '3', '[Fields]\nActive=true\n'),
+            ('A.J', 'All', '[Fields]\nActive=true\n'),
+            ('ARJAR', 'All', '[Fields]\nActive=true\n'),
+            ('*', 'All', '[Fields]\nActive=true\n')
+        ]
+        for ext, os_type, text in refusals:
+            request.write_text(text)
+            run('set-archive', root, ext, os_type, request, '--apply', ok=False)
+            assert archives.read_bytes() == archive_before
+        request.write_bytes(b'[Fields]\nPack=zip\x1b[2J\n')
+        run('set-archive', root, 'ZIP', 'All', request, '--apply', ok=False)
+        assert archives.read_bytes() == archive_before
+        archives.write_bytes(archive_before + b'x')
+        run('set-archive', root, 'ARJ', 'All', request, '--apply', ok=False)
+        archives.write_bytes(archive_before)
+
     server_before = (root / 'data/servers.dat').read_bytes()
     request.write_text('[Fields]\nActive=true\nIPv4Adapter=127.0.0.1\nPort=24554\nSSLPort=24553\n')
     server_change = run('set-server', root, 'BINKP', request, '--apply')

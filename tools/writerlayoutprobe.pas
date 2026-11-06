@@ -4,6 +4,9 @@ uses SysUtils;
 const OSBIT = '/probe';
 {$I records.112}
 var Config:RecConfig; Server:ServerInfoRecord; Event:RecEvent;
+{$ifdef PROFILE_A49}
+    Archive:RecArchive;
+{$endif}
 procedure Check(const Name:string; Field,Base:Pointer; Size,ExpectedOffset,ExpectedSize:PtrUInt);
 var Offset:PtrUInt;
 begin
@@ -74,6 +77,17 @@ begin
     Check('Config.LogNode.DateFmt',@Config.LogNode.DateFmt,@Config,SizeOf(Config.LogNode.DateFmt),4617,26);
     Check('Config.LogPOLL.DateFmt',@Config.LogPOLL.DateFmt,@Config,SizeOf(Config.LogPOLL.DateFmt),4652,26);
     Check('Config.LogQWK.DateFmt',@Config.LogQWK.DateFmt,@Config,SizeOf(Config.LogQWK.DateFmt),4687,26);
+    // ARCHIVE.DAT RecArchive: String[N] reserves a length byte plus N bytes.
+    if SizeOf(Archive)<>281 then
+        raise Exception.Create('Unexpected vendor archive record size.');
+    Writeln('Archive.Bytes=',SizeOf(Archive));
+    Check('Archive.OSType',@Archive.OSType,@Archive,SizeOf(Archive.OSType),0,1);
+    Check('Archive.Active',@Archive.Active,@Archive,SizeOf(Archive.Active),1,1);
+    Check('Archive.Desc',@Archive.Desc,@Archive,SizeOf(Archive.Desc),2,31);
+    Check('Archive.Ext',@Archive.Ext,@Archive,SizeOf(Archive.Ext),33,5);
+    Check('Archive.Pack',@Archive.Pack,@Archive,SizeOf(Archive.Pack),38,81);
+    Check('Archive.Unpack',@Archive.Unpack,@Archive,SizeOf(Archive.Unpack),119,81);
+    Check('Archive.View',@Archive.View,@Archive,SizeOf(Archive.View),200,81);
 {$endif}
     Writeln('Status=PASS');
 end.

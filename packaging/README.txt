@@ -21,6 +21,8 @@ Usage
   mdatmod set-server ROOT PROTOCOL REQUEST.ini [--apply]
   mdatmod disable-servers ROOT [--apply]
   mdatmod ban-event ROOT REQUEST.ini [--apply]
+  mdatmod get-archive ROOT EXT OSTYPE
+  mdatmod set-archive ROOT EXT OSTYPE REQUEST.ini [--apply]
   mdatmod restore ROOT BACKUP [--apply]
   mdatmod check-offline ROOT
   mdatmod --hash FILE
@@ -38,6 +40,12 @@ ROOT is the Mystic installation directory. REQUEST.ini contains one
 A49 log entry timestamp fields (get / set-config): MISLogDateFormat,
 NodeLogDateFormat, PollLogDateFormat, QWKLogDateFormat. These do not
 change rolling modes, retention or the date in daily filenames.
+
+A49 archive records (ARCHIVE.DAT): a record is selected by its extension
+and OSTYPE (Windows, Linux, macOS or All). get-archive prints Found=false or
+the record's Active, Description, Pack, Unpack and View values. set-archive
+accepts the same five fields; a missing record is appended and then needs
+Active and Description. Other records and their order stay unchanged.
 
 Private fields, unknown profiles, overlong values, running instances and
 symlinked DAT files are refused. There is no support for editing a running

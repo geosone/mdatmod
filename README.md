@@ -66,6 +66,8 @@ mdatmod set-config ROOT REQUEST.ini [--apply]
 mdatmod set-server ROOT PROTOCOL REQUEST.ini [--apply]
 mdatmod disable-servers ROOT [--apply]
 mdatmod ban-event ROOT REQUEST.ini [--apply]
+mdatmod get-archive ROOT EXT OSTYPE
+mdatmod set-archive ROOT EXT OSTYPE REQUEST.ini [--apply]
 mdatmod restore ROOT BACKUP [--apply]
 mdatmod check-offline ROOT
 ```
@@ -142,3 +144,33 @@ profile guards remain in force. Older profiles are not assigned A49 offsets.
 Mystic's [Login/Matrix documentation](https://wiki.mysticbbs.com/doku.php?id=config_login_matrix)
 distinguishes local Unix output from remote negotiation and CP437 storage. A
 terminal using UTF-8 does not justify converting Mystic's stored DAT/ANSI data.
+
+### A49 archive records
+
+From 0.5.0, `get-archive ROOT EXT OSTYPE` and
+`set-archive ROOT EXT OSTYPE REQUEST.ini [--apply]` read and write one
+`data/archive.dat` record, found through the absolute DataPath. OSTYPE is
+`Windows`, `Linux`, `macOS` or `All` (vendor values 0-3; OS/2 is not offered).
+The extension has one to four letters or digits and is stored upper case.
+Exactly one record may match the pair; duplicates are refused.
+
+RecArchive is a packed 281-byte record. `tools/writerlayoutprobe.pas` checks
+every zero-based offset and total reservation against the hashed A49
+`records.112`: OSType Byte at 0, Active Boolean at 1, Desc String[30] at 2
+(31 bytes), Ext String[4] at 33 (5 bytes), Pack, Unpack and View String[80] at
+38, 119 and 200 (81 bytes each). Request fields are `Active`, `Description`,
+`Pack`, `Unpack` and `View`. A missing pair is appended as a new record and
+then needs `Active` and `Description`; existing record numbers stay unchanged.
+Vendor records keep stale bytes after a string's length; a written field is
+zero-filled to its full reservation, other fields keep their bytes. `restore`
+also returns an appended record to the earlier file. Only the A49 profile is
+accepted.
+
+Mystic runs these commands through `/bin/sh -c` on Linux and `cmd` on
+Windows, from the Mystic root, with `%1` the archive, `%2` the requested
+member pattern and `%3` the temporary directory with a trailing separator.
+Writer tests cover plans, exact byte changes, appending, restore and refusal
+of overlong values, unknown fields, invalid extensions/OSTYPEs, control bytes
+and an incomplete file. Native MUTIL MassUpload with FILE_ID.DIZ import used
+records written by mdatmod on Linux x86-64 A49; which commands work is
+recorded by the mysticd installer that writes them.
