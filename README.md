@@ -171,6 +171,7 @@ Windows, from the Mystic root, with `%1` the archive, `%2` the requested
 member pattern and `%3` the temporary directory with a trailing separator.
 Writer tests cover plans, exact byte changes, appending, restore and refusal
 of overlong values, unknown fields, invalid extensions/OSTYPEs, control bytes
-and an incomplete file. Native MUTIL MassUpload with FILE_ID.DIZ import used
-records written by mdatmod on Linux x86-64 A49; which commands work is
-recorded by the mysticd installer that writes them.
+and an incomplete file. Native A49 MUTIL MassUpload with FILE_ID.DIZ import
+read records written by this mdatmod on Linux x86-64 and Windows x86/x64;
+the record commands themselves are qualified by the mysticd installer that
+writes them.
