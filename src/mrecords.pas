@@ -786,7 +786,8 @@ var
     Lows, Highs: array of Int64;
     Element, Inner: TRecordType;
     Dimension: Integer;
-    Index: Int64;
+    // A loop counter must be a native ordinal on 32-bit targets.
+    Index: Integer;
 begin
     Expect('Array');
     Expect('[');
@@ -800,6 +801,8 @@ begin
         Highs[High(Highs)] := ParseExpression;
         if Highs[High(Highs)] < Lows[High(Lows)] then
             Fail('empty array range');
+        if (Lows[High(Lows)] < -1000000) or (Highs[High(Highs)] > 1000000) then
+            Fail('array range too large');
         if not IsWord(Peek, ',') then
             Break;
         Next;
@@ -813,7 +816,7 @@ begin
         Inner := TRecordType.Create;
         Inner.Size := 0;
         Inner.Storable := Element.Storable;
-        for Index := Lows[Dimension] to Highs[Dimension] do
+        for Index := Integer(Lows[Dimension]) to Integer(Highs[Dimension]) do
         begin
             AppendLeaves(Inner, Element, '[' + IntToStr(Index) + ']', Inner.Size);
             Inner.Size := Inner.Size + Element.Size;
