@@ -93,7 +93,10 @@ DAT.
 Native writes are qualified for Linux x86-64 A48/A49, ARM64 A48, ARMHF
 A48/A49 and Windows x86/x64 A49. The ARM matrix passed on real ARM hardware
 with Debian 12 and 13 userspaces. No public A49 ARM64 binary was available
-during qualification; that combination is not claimed. No release archive implies support for other binaries.
+during qualification; that combination is not claimed. Linux x86-64 A49 admits
+both the current 2024/05/29 download and the earlier 2023/04/30 prealpha build
+([qualification](docs/native-a49-2023-qualification.md)). No release archive
+implies support for other binaries.
 
 The root writer lock coordinates mdatmod instances. Windows holds a read handle
 that denies foreign writes while allowing atomic replacement. Linux holds flock

@@ -63,8 +63,12 @@ begin
        ((Digest='e28cb30874a99a51d2bc36d596edf773c88016e4b241dbfb596792bd2a96768d') or
         (Digest='50e68574be0b044fc7a96f7aa57a196ec3450fe4eb4a0a163652f400b7f57bf3') or
         (Digest='db0cedcf3b293f9b8ab007bebe480f118da189a307f0a636b03a5a91201946d8')) then Exit;
+    // A49 x86-64: c04c0b3f... is the earlier prealpha build compiled
+    // 2023/04/30 with the identical records.112; see
+    // docs/native-a49-2023-qualification.md.
     if (Version='1.12 A49') and
        ((Digest='39e47caa92d70e49dd826c074083f4046745ccbe40e5ef89662a98333ee210c3') or
+        (Digest='c04c0b3f0ac9dd2e6df982084d3c847d5b663a27524746b5f2af02c9ad63e617') or
         (Digest='91077e44fa992bbac287d65e471389209a392bc863418886bcff02849e40d74a')) then Exit;
     {$endif}
     {$ifdef Windows}
