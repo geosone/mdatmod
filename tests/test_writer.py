@@ -233,6 +233,38 @@ with tempfile.TemporaryDirectory(prefix='mdatmod-writer-',
     run('restore', root, event_change['Backup'], '--apply')
     assert (root / 'data/event.dat').read_bytes() == event_before
 
+    # Generic records: change one event selected by its fields, append a new
+    # one with a fresh UID, refuse ambiguous matches and credentials, and
+    # restore the exact original bytes.
+    events_before = (root / 'data/event.dat').read_bytes()
+    listing = run('list', root, 'event.dat', 'UID', 'Name', 'Shell')
+    assert int(listing['Records']) == len(events_before) // 640
+    first_uid = listing['0.UID']
+    request.write_text('[Match]\nUID=%s\n[Fields]\nShell=echo generic\nExecDays[3]=true\n' % first_uid)
+    plan = run('set-record', root, 'event.dat', request)
+    assert plan['Action'] == 'Plan' and plan['Record'] == '0'
+    assert (root / 'data/event.dat').read_bytes() == events_before
+    changed_event = run('set-record', root, 'event.dat', request, '--apply')
+    after_event = (root / 'data/event.dat').read_bytes()
+    assert after_event[640:] == events_before[640:]
+    assert run('list', root, 'event.dat', 'Shell')['0.Shell'] == 'echo generic'
+    request.write_text('[Match]\nName=Generic test\n[Fields]\nExecType=2\nShell=echo new\n'
+                       '[Options]\nCreate=true\nUniqueField=UID\n')
+    created = run('set-record', root, 'event.dat', request, '--apply')
+    assert len((root / 'data/event.dat').read_bytes()) == len(events_before) + 640
+    uids = [int(value) for key, value in run('list', root, 'event.dat', 'UID').items() if key.endswith('.UID')]
+    assert len(set(uids)) == len(uids) and uids[-1] == max(uids)
+    assert run('set-record', root, 'event.dat', request, '--apply')['Action'] == 'Unchanged'
+    request.write_text('[Match]\nActive=false\n[Fields]\nActive=false\n')
+    if run('list', root, 'event.dat', 'Active').get('1.Active') == 'false':
+        run('set-record', root, 'event.dat', request, '--apply', ok=False)
+    run('list', root, 'mystic.dat', 'SystemPW', ok=False)
+    run('list', root, 'users.dat', ok=False)
+    run('restore', root, changed_event['Backup'], '--apply')
+    assert (root / 'data/event.dat').read_bytes() == events_before
+    assert created['Record'] == str(len(events_before) // 640)
+    request.write_text('[Fields]\nActive=false\nShell=/usr/bin/pwsh -NoProfile -File /opt/mystic/banunban.ps1 @IP@\n')
+
     # Empty event files exercise zero-length private backups and restoration.
     events = root / 'data/event.dat'
     events.write_bytes(b'')
@@ -299,5 +331,5 @@ with tempfile.TemporaryDirectory(prefix='mdatmod-writer-',
                 process.wait()
     assert hashlib.sha256((source / 'mystic.dat').read_bytes()).digest() == source_hash
 guards = 'busy process and symlink guards' if os.name != 'nt' else 'Windows file-lock and native/renamed-process guards'
-print('PASS offline config/server/event writes, byte preservation, backup/checksum, '
+print('PASS offline config/server/event writes, generic records, byte preservation, backup/checksum, '
       f'restore, private/invalid-field refusal, {guards}')

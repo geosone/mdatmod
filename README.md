@@ -2,7 +2,8 @@
 
 Profile-validated Mystic DAT utility.
 
-Status: Pascal implementation with measured A45-A49 profiles. Offline writes are
+Status: Pascal implementation with measured A45-A49 profiles and generic
+records.112-based access to every non-personal DAT file. Offline writes are
 implemented and pass the native writer tests on Linux and Windows.
 
 ## Distribution
@@ -144,6 +145,83 @@ profile guards remain in force. Older profiles are not assigned A49 offsets.
 Mystic's [Login/Matrix documentation](https://wiki.mysticbbs.com/doku.php?id=config_login_matrix)
 distinguishes local Unix output from remote negotiation and CP437 storage. A
 terminal using UTF-8 does not justify converting Mystic's stored DAT/ANSI data.
+
+### Generic records from records.112
+
+From 0.6.0 every Mystic DAT file below can be read, changed and extended by
+field name. The layout is not embedded: mdatmod parses the installation's own
+`docs/records.112` (the vendor developer records, already identified by
+SHA-256 against a known profile) and computes each field's zero-based offset
+and size with Free Pascal's packed-record rules (`{$PACKRECORDS 1}`; Byte,
+Boolean and Char 1 byte; Word/SmallInt 2; LongInt/Cardinal 4; Int64/UInt64 8,
+all little endian; `String[N]` one length byte plus N payload bytes; a set of
+members below 32 takes 4 bytes, otherwise 32).
+
+```text
+mdatmod schema ROOT FILE                      field names, offsets, sizes, kinds
+mdatmod list ROOT FILE [FIELD ...]            values of every record
+mdatmod set-record ROOT FILE REQUEST.ini [--apply]
+```
+
+| File | Record type | Location |
+| --- | --- | --- |
+| mystic.dat | RecConfig (one record) | root |
+| archive.dat | RecArchive | DataPath |
+| event.dat | RecEvent | DataPath |
+| security.dat | RecSecurity | DataPath |
+| mbases.dat | RecMessageBase | DataPath |
+| fbases.dat | RecFileBase | DataPath |
+| groups_g.dat, groups_f.dat | RecGroup | DataPath |
+| protocol.dat | RecProtocol | DataPath |
+| servers.dat | ServerInfoRecord | DataPath |
+| echonode.dat | RecEchoMailNode | DataPath |
+| echogroup.dat | RecEchoMailGroup | DataPath |
+| qwknet.dat | RecQwkNetwork | DataPath |
+| history.dat | RecHistory | DataPath |
+
+`users.dat` and `callers.dat` hold personal data and are refused. Credential
+fields (`Password`, `CryptKey` and every field ending in `Pass` or `PW`, such
+as `SysopPW` or `BinkPass`) are never printed; `schema` marks them `secret`.
+They can still be written through a request file. Field names are those of
+records.112 with element indexes and dots: `ExecDays[0]`,
+`NetAddress[1].Zone`. `list` omits reserved padding (`Res`, `Reserved`,
+`UNUSED`) unless it is named.
+
+Values: numbers in decimal, booleans `true`/`false`, sets as a comma list of
+members (`1,5,26`), strings and chars as printable ASCII. Any other byte is
+written and printed as `\xNN`; a backslash is literal unless `x` and two hex
+digits follow. No code page is guessed.
+
+A request has three sections:
+
+```ini
+[Match]
+Name=Daily Tasks
+Shell=cron -f dbp.ini
+[Fields]
+Shell=/usr/bin/pwsh -NoProfile -File /opt/mystic/cron.ps1 -Apply
+[Options]
+Create=false
+UniqueField=UID
+```
+
+`[Match]` must select exactly one record (`mystic.dat` takes only
+`[Fields]`). With `Create=true` and no match, a zeroed record is appended,
+takes the Match values and then the Fields; `UniqueField` gives it the
+highest existing value plus one, as RecEvent's UID needs. Strings are
+compared by their payload, a written string is zero-filled to its full
+reservation, and every other byte of the file stays as it was. Records are
+never deleted or reordered, because other files refer to record positions.
+All write guards below apply unchanged; `restore` also returns an appended
+record to the earlier file.
+
+`tests/test_schema.py MDATMOD RECORDS.112 ...` builds a synthetic root per
+records.112, takes every field from `schema` and compiles a Free Pascal probe
+that includes the same records.112, then compares each offset, size and set
+bit layout. It passed for the A44/A45, A46, A47, A48 and A49 records (1896 to
+3947 fields over 13 files each); CI repeats it for A49. `test_writer.py`
+covers plans, a field change, a created record with a unique UID, refusal of
+ambiguous matches, credentials and personal files, and exact restore.
 
 ### A49 archive records
 

@@ -7,6 +7,7 @@ procedure RequireStopped(const Root:string);
 procedure QualifyWriterBinary(const Root, Version:string);
 function CommitConfig(const Root:string; const Expected, Replacement:TBytes):string;
 function CommitData(const Root,TargetFile:string; const Expected, Replacement:TBytes):string;
+function CommitRecords(const Root,TargetFile:string; const Expected, Replacement:TBytes; RecordSize:Integer):string;
 implementation
 uses msha256
 {$ifdef Linux}, BaseUnix, Unix, mlinuxflags{$endif}
@@ -224,7 +225,7 @@ function ReadLocked(FD:LongInt):TBytes;
 var Size,Offset,Count:Int64;
 begin
     Result:=nil; Size:=fpLSeek(FD,0,SEEK_END);
-    if (Size<0) or (Size>1048576) or (fpLSeek(FD,0,SEEK_SET)<0) then
+    if (Size<0) or (Size>16777216) or (fpLSeek(FD,0,SEEK_SET)<0) then
         raise Exception.Create('Cannot read the locked DAT descriptor.');
     SetLength(Result,Size); Offset:=0;
     while Offset<Size do begin
@@ -247,7 +248,25 @@ begin
 end;
 {$endif}
 
+function CommitTarget(const Root,TargetFile:string; const Expected, Replacement:TBytes; RecordSize:Integer):string; forward;
+
 function CommitData(const Root,TargetFile:string; const Expected, Replacement:TBytes):string;
+begin
+    Result:=CommitTarget(Root,TargetFile,Expected,Replacement,0);
+end;
+
+// Generic record writes (set-record and restore of a records.112 file): the
+// caller has matched the file name to its record type. Whole records may be
+// appended or, on restore, removed again; the size stays bounded.
+function CommitRecords(const Root,TargetFile:string; const Expected, Replacement:TBytes; RecordSize:Integer):string;
+begin
+    if RecordSize<=0 then raise Exception.Create('Unknown record size.');
+    if (Length(Replacement) mod RecordSize<>0) or (Length(Replacement)>16777216) then
+        raise Exception.Create('DAT data must contain complete bounded records.');
+    Result:=CommitTarget(Root,TargetFile,Expected,Replacement,RecordSize);
+end;
+
+function CommitTarget(const Root,TargetFile:string; const Expected, Replacement:TBytes; RecordSize:Integer):string;
 var Target,LockPath,Temporary,BackupDirectory,Token:string; Current:TBytes; ID:TGUID;
 {$ifdef Linux}var LockFD,DirectoryFD,TargetFD:LongInt; Original,FileInfo:Stat;{$endif}
 {$ifdef Windows}var LockHandle,TargetHandle:THandle; OriginalInfo,CurrentInfo:TByHandleFileInformation;{$endif}
@@ -260,10 +279,12 @@ begin
     if Copy(Target,1,Length(IncludeTrailingPathDelimiter(Root)))<>IncludeTrailingPathDelimiter(Root) then
     {$endif}
         raise Exception.Create('DAT target must remain inside the root.');
-    if (ExtractFileName(Target)<>'mystic.dat') and (ExtractFileName(Target)<>'servers.dat') and
+    // Fixed-field commands name their targets; CommitRecords checked the
+    // generic record size already.
+    if (RecordSize=0) and (ExtractFileName(Target)<>'mystic.dat') and (ExtractFileName(Target)<>'servers.dat') and
         (ExtractFileName(Target)<>'event.dat') and (ExtractFileName(Target)<>'archive.dat') then
         raise Exception.Create('Unsupported DAT target.');
-    if (Length(Expected)<>Length(Replacement)) and (ExtractFileName(Target)<>'event.dat') and
+    if (RecordSize=0) and (Length(Expected)<>Length(Replacement)) and (ExtractFileName(Target)<>'event.dat') and
         (ExtractFileName(Target)<>'archive.dat') then
         raise Exception.Create('Record size must not change.');
     // set-archive may append whole 281-byte RecArchive records; restore may

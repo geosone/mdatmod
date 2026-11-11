@@ -3,6 +3,10 @@ mdatmod - qualified offline Mystic DAT tool
 
 Reads and writes public fields of Mystic 1.12 A49 DAT files through
 validated record profiles. Unknown versions and layouts are refused.
+schema, list and set-record reach every field of the non-personal DAT
+files (event.dat, mbases.dat, security.dat, ...) by name; the layout comes
+from the installation's own SHA-256-checked docs/records.112. users.dat and
+callers.dat are refused and credential fields are never printed.
 
 Requirements
 ------------
@@ -23,6 +27,9 @@ Usage
   mdatmod ban-event ROOT REQUEST.ini [--apply]
   mdatmod get-archive ROOT EXT OSTYPE
   mdatmod set-archive ROOT EXT OSTYPE REQUEST.ini [--apply]
+  mdatmod schema ROOT FILE
+  mdatmod list ROOT FILE [FIELD ...]
+  mdatmod set-record ROOT FILE REQUEST.ini [--apply]
   mdatmod restore ROOT BACKUP [--apply]
   mdatmod check-offline ROOT
   mdatmod --hash FILE

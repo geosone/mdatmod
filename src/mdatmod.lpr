@@ -2,11 +2,11 @@ program mdatmod;
 
 {$mode objfpc}{$H+}
 
-uses Classes, SysUtils, Sockets, msha256, mprofiles, msafeio, mrequest, marchive;
+uses Classes, SysUtils, Sockets, msha256, mprofiles, msafeio, mrequest, marchive, mrecords;
 
 procedure Usage;
 begin
-    Writeln('mdatmod 0.5.0 - qualified offline Mystic DAT tool');
+    Writeln('mdatmod 0.6.0 - qualified offline Mystic DAT tool');
     Writeln('  mdatmod --help | -h | /h | /?');
     Writeln('  mdatmod inspect ROOT');
     Writeln('  mdatmod get ROOT FIELD');
@@ -20,7 +20,11 @@ begin
     Writeln('  mdatmod ban-event ROOT REQUEST.ini [--apply]');
     Writeln('  mdatmod get-archive ROOT EXT OSTYPE');
     Writeln('  mdatmod set-archive ROOT EXT OSTYPE REQUEST.ini [--apply]');
+    Writeln('  mdatmod schema ROOT FILE');
+    Writeln('  mdatmod list ROOT FILE [FIELD ...]');
+    Writeln('  mdatmod set-record ROOT FILE REQUEST.ini [--apply]');
     Writeln('OSTYPE is Windows, Linux, macOS or All; archive records need A49.');
+    Writeln('FILE is a Mystic DAT name such as event.dat; its layout comes from records.112.');
     Writeln('  mdatmod --hash FILE');
     Writeln('  mdatmod --self-test');
     Writeln('Writes require a qualified native binary, stopped MIS/Mystic and --apply.');
@@ -212,15 +216,88 @@ begin
     Result:=nil;
     Stream:=TFileStream.Create(Path,fmOpenRead or fmShareDenyNone);
     try
-        if Stream.Size>1048576 then raise Exception.Create('Backup exceeds the supported record size.');
+        if Stream.Size>16777216 then raise Exception.Create('File exceeds the supported DAT size.');
         SetLength(Result,Stream.Size);
         if Length(Result)>0 then Stream.ReadBuffer(Result[0],Length(Result));
     finally Stream.Free; end;
 end;
 
+
+// Generic records.112 support. The developer record source is the one whose
+// SHA-256 IdentifyProfile accepted, so only a known vendor layout is parsed.
+function RecordsPath(const Root: string): string;
+begin
+    Result := IncludeTrailingPathDelimiter(Root) + 'docs' + PathDelim + 'records.112';
+    if not FileExists(Result) then
+        Result := IncludeTrailingPathDelimiter(Root) + 'records.112';
+end;
+
+function LoadCatalog(const Root: string): TRecordCatalog;
+begin
+    Result := TRecordCatalog.Create(SizeOf(Pointer));
+    try
+        {$ifdef Windows}
+        Result.LoadFromFile(RecordsPath(Root), ['WINDOWS']);
+        {$else}
+        Result.LoadFromFile(RecordsPath(Root), ['LINUX']);
+        {$endif}
+    except
+        Result.Free;
+        raise;
+    end;
+end;
+
+// Looks up FILE, refuses personal data and returns its record type and path.
+// DataPath (RecConfig offset 98, String[80]) must be absolute.
+function ResolveRecordFile(const Root, Name: string; Catalog: TRecordCatalog;
+    const Config: TBytes; out Item: TDataFile; out Path: string): TRecordType;
+var
+    Directory: string;
+begin
+    if not FindDataFile(Name, Item) then
+        raise Exception.Create('Unknown Mystic DAT file; see --help.');
+    if Item.Personal then
+        raise Exception.Create(Item.FileName + ' holds personal data and is not accessible.');
+    Result := Catalog.Find(Item.TypeName);
+    if (Result = nil) or not Result.Storable or (Result.Size <= 0) then
+        raise Exception.Create('records.112 has no storable ' + Item.TypeName + '.');
+    if Item.InRoot then
+        Path := IncludeTrailingPathDelimiter(Root) + Item.FileName
+    else
+    begin
+        Directory := GetString(Config, 98, 80);
+        {$ifdef Windows}
+        if ExtractFileDrive(Directory) = '' then
+        {$else}
+        if (Directory = '') or (Directory[1] <> '/') then
+        {$endif}
+            raise Exception.Create('Native data directory must be absolute.');
+        Path := IncludeTrailingPathDelimiter(PhysicalRoot(Directory)) + Item.FileName;
+    end;
+end;
+
+function GenericRecordSize(const Root, Name: string): Integer;
+var
+    Catalog: TRecordCatalog;
+    Item: TDataFile;
+    RecordType: TRecordType;
+    Path: string;
+    Config: TBytes;
+begin
+    Catalog := LoadCatalog(Root);
+    try
+        Config := ReadConfig(Root, IdentifyProfile(Root));
+        RecordType := ResolveRecordFile(Root, Name, Catalog, Config, Item, Path);
+        Result := RecordType.Size;
+    finally
+        Catalog.Free;
+    end;
+end;
+
 procedure WriteCommand;
 var Root,FieldName,Value,Backup,Checksum,Command,TargetPath,Relative:string;
-    Profile,Index,I:Integer;
+    Profile,Index,I,Size:Integer;
+    Generic:Boolean;
     Original,Replacement,ChecksumBytes:TBytes;
     Field:TField;
     Apply:Boolean;
@@ -240,6 +317,8 @@ begin
     QualifyWriterBinary(Root,Profiles[Profile].Name);
     Original:=ReadConfig(Root,Profile);
     TargetPath:=IncludeTrailingPathDelimiter(Root)+'mystic.dat';
+    Generic:=False;
+    Size:=0;
     if Command='set' then begin
         FieldName:=ParamStr(3); Value:=ParamStr(4); Index:=-1;
         for I:=0 to Profiles[Profile].FieldCount-1 do
@@ -289,7 +368,12 @@ begin
             // Restoring may remove records an earlier set-archive appended.
             if Length(Replacement) mod ArchiveRecordSize<>0 then
                 raise Exception.Create('Unknown archive backup layout.');
-        end else raise Exception.Create('Unsupported backup target.');
+        end else begin
+            // Any other records.112 file: whole records of its type.
+            Size:=GenericRecordSize(Root,ExtractFileName(TargetPath));
+            if Length(Replacement) mod Size<>0 then raise Exception.Create('Unknown backup layout.');
+            Generic:=True;
+        end;
     end;
     if SHA256Bytes(Original)=SHA256Bytes(Replacement) then begin
         Writeln('Action=Unchanged'); Exit;
@@ -303,7 +387,10 @@ begin
         Writeln('RequiresStopped=true');
         Exit;
     end;
-    Backup:=CommitData(Root,TargetPath,Original,Replacement);
+    if Generic then
+        Backup:=CommitRecords(Root,TargetPath,Original,Replacement,Size)
+    else
+        Backup:=CommitData(Root,TargetPath,Original,Replacement);
     Writeln('Action=Applied');
     Writeln('Operation=',Command);
     Writeln('Backup=',Backup);
@@ -542,6 +629,241 @@ begin
     Writeln('ArchiveSHA256=', SHA256Bytes(After));
 end;
 
+
+// Compares a request value with a stored field. Strings compare their
+// payload only, so bytes behind the length do not matter.
+function LeafMatches(const Data: TBytes; Base: Integer; const Leaf: TLeaf; const Value: string): Boolean;
+var
+    Scratch: TBytes;
+    I, Count: Integer;
+begin
+    Scratch := Copy(Data, Base, Leaf.Offset + Leaf.Size);
+    WriteLeaf(Scratch, 0, Leaf, Value);
+    Count := Leaf.Size;
+    if Leaf.Kind = lkString then
+        Count := Scratch[Leaf.Offset] + 1;
+    for I := 0 to Count - 1 do
+        if Scratch[Leaf.Offset + I] <> Data[Base + Leaf.Offset + I] then
+            Exit(False);
+    Result := True;
+end;
+
+function RequireLeaf(RecordType: TRecordType; const Name: string): TLeaf;
+begin
+    if not FindLeaf(RecordType, Name, Result) then
+        raise Exception.Create('Unknown field ' + Name + ' in ' + RecordType.Name + '.');
+    if Result.Kind = lkPointer then
+        raise Exception.Create(Name + ' is not stored in the file.');
+end;
+
+procedure RecordCommand;
+var
+    Command, Root, Path, Backup, Value: string;
+    Profile, Count, I, J, Base, Match, Matches: Integer;
+    Apply, Create: Boolean;
+    Catalog: TRecordCatalog;
+    RecordType: TRecordType;
+    Item: TDataFile;
+    Config, Before, After: TBytes;
+    Leaf: TLeaf;
+    Selected: TStringList;
+    MatchFields, Fields, Options: TStringList;
+    Highest, Current: Int64;
+begin
+    Command := LowerCase(ParamStr(1));
+    Apply := False;
+    if Command = 'set-record' then
+    begin
+        if (ParamCount <> 4) and ((ParamCount <> 5) or (ParamStr(5) <> '--apply')) then
+            raise Exception.Create('Use set-record ROOT FILE REQUEST [--apply].');
+        Apply := ParamCount = 5;
+    end
+    else if (Command = 'schema') and (ParamCount <> 3) then
+        raise Exception.Create('Use schema ROOT FILE.')
+    else if (Command = 'list') and (ParamCount < 3) then
+        raise Exception.Create('Use list ROOT FILE [FIELD ...].');
+
+    Root := PhysicalRoot(ParamStr(2));
+    Profile := IdentifyProfile(Root);
+    if Command = 'set-record' then
+        QualifyWriterBinary(Root, Profiles[Profile].Name);
+    Config := ReadConfig(Root, Profile);
+    Catalog := LoadCatalog(Root);
+    Selected := TStringList.Create;
+    MatchFields := TStringList.Create;
+    Fields := TStringList.Create;
+    Options := TStringList.Create;
+    try
+        RecordType := ResolveRecordFile(Root, ParamStr(3), Catalog, Config, Item, Path);
+
+        if Command = 'schema' then
+        begin
+            Writeln('File=', Item.FileName);
+            Writeln('Type=', Item.TypeName);
+            Writeln('RecordBytes=', RecordType.Size);
+            for I := 0 to High(RecordType.Leaves) do
+            begin
+                Leaf := RecordType.Leaves[I];
+                Value := IntToStr(Leaf.Offset) + ',' + IntToStr(Leaf.Size) + ',' + LeafKindName(Leaf.Kind);
+                if Leaf.Kind = lkString then
+                    Value := Value + ',' + IntToStr(Leaf.Maximum);
+                if Leaf.Kind = lkSet then
+                    Value := Value + ',' + IntToStr(Leaf.SetLow) + '-' + IntToStr(Leaf.SetHigh);
+                if IsSecretLeaf(Leaf) then
+                    Value := Value + ',secret';
+                Writeln('Field.', Leaf.Name, '=', Value);
+            end;
+            Exit;
+        end;
+
+        if Item.InRoot then
+            Before := Config
+        else
+            Before := ReadRaw(Path);
+        if (Length(Before) mod RecordType.Size <> 0) or (Item.Single and (Length(Before) <> RecordType.Size)) then
+            raise Exception.Create(Item.FileName + ' size does not match ' + Item.TypeName + '.');
+        Count := Length(Before) div RecordType.Size;
+
+        if Command = 'list' then
+        begin
+            for I := 4 to ParamCount do
+            begin
+                Leaf := RequireLeaf(RecordType, ParamStr(I));
+                if IsSecretLeaf(Leaf) then
+                    raise Exception.Create(Leaf.Name + ' is a credential and is never printed.');
+                Selected.Add(Leaf.Name);
+            end;
+            Writeln('File=', Item.FileName);
+            Writeln('Records=', Count);
+            for J := 0 to Count - 1 do
+            begin
+                Base := J * RecordType.Size;
+                for I := 0 to High(RecordType.Leaves) do
+                begin
+                    Leaf := RecordType.Leaves[I];
+                    if Selected.Count > 0 then
+                    begin
+                        if Selected.IndexOf(Leaf.Name) < 0 then
+                            Continue;
+                    end
+                    else if IsSecretLeaf(Leaf) or IsReservedLeaf(Leaf) or (Leaf.Kind = lkPointer) then
+                        Continue;
+                    Writeln(J, '.', Leaf.Name, '=', ReadLeaf(Before, Base, Leaf));
+                end;
+            end;
+            Exit;
+        end;
+
+        // set-record
+        LoadRecordRequest(ParamStr(4), MatchFields, Fields, Options);
+        for I := 0 to Options.Count - 1 do
+            if not SameText(Options.Names[I], 'Create') and not SameText(Options.Names[I], 'UniqueField') then
+                raise Exception.Create('Options are Create and UniqueField.');
+        Create := SameText(Options.Values['Create'], 'true');
+        if (Options.Values['Create'] <> '') and not Create and not SameText(Options.Values['Create'], 'false') then
+            raise Exception.Create('Create is true or false.');
+        if Item.Single and ((MatchFields.Count > 0) or Create) then
+            raise Exception.Create(Item.FileName + ' holds one record; use only Fields.');
+        if not Item.Single and (MatchFields.Count = 0) then
+            raise Exception.Create('A Match section selects the record to change.');
+
+        Match := -1;
+        Matches := 0;
+        if Item.Single then
+        begin
+            Match := 0;
+            Matches := 1;
+        end
+        else
+            for J := 0 to Count - 1 do
+            begin
+                Base := J * RecordType.Size;
+                I := 0;
+                while I < MatchFields.Count do
+                begin
+                    Leaf := RequireLeaf(RecordType, MatchFields.Names[I]);
+                    if not LeafMatches(Before, Base, Leaf, MatchFields.ValueFromIndex[I]) then
+                        Break;
+                    Inc(I);
+                end;
+                if I = MatchFields.Count then
+                begin
+                    Match := J;
+                    Inc(Matches);
+                end;
+            end;
+        if Matches > 1 then
+            raise Exception.Create('Match selects ' + IntToStr(Matches) + ' records; add fields to select one.');
+        if (Matches = 0) and not Create then
+            raise Exception.Create('No record matches; set Create=true to append one.');
+
+        After := Copy(Before);
+        if Matches = 0 then
+        begin
+            // A new record starts zeroed, then takes the Match values.
+            Match := Count;
+            SetLength(After, Length(After) + RecordType.Size);
+            FillChar(After[Match * RecordType.Size], RecordType.Size, 0);
+            for I := 0 to MatchFields.Count - 1 do
+                WriteLeaf(After, Match * RecordType.Size, RequireLeaf(RecordType, MatchFields.Names[I]),
+                    MatchFields.ValueFromIndex[I]);
+            if Options.Values['UniqueField'] <> '' then
+            begin
+                // Records such as RecEvent carry an ID that must stay unique.
+                Leaf := RequireLeaf(RecordType, Options.Values['UniqueField']);
+                if not (Leaf.Kind in [lkSigned, lkUnsigned]) then
+                    raise Exception.Create('UniqueField must be numeric.');
+                Highest := 0;
+                for J := 0 to Count - 1 do
+                begin
+                    Current := StrToInt64(ReadLeaf(Before, J * RecordType.Size, Leaf));
+                    if Current > Highest then
+                        Highest := Current;
+                end;
+                WriteLeaf(After, Match * RecordType.Size, Leaf, IntToStr(Highest + 1));
+            end;
+        end;
+        Base := Match * RecordType.Size;
+        for I := 0 to Fields.Count - 1 do
+        begin
+            Leaf := RequireLeaf(RecordType, Fields.Names[I]);
+            if (Options.Values['UniqueField'] <> '') and SameText(Leaf.Name, Options.Values['UniqueField']) then
+                raise Exception.Create('UniqueField is assigned by mdatmod.');
+            WriteLeaf(After, Base, Leaf, Fields.ValueFromIndex[I]);
+        end;
+
+        if SHA256Bytes(Before) = SHA256Bytes(After) then
+        begin
+            Writeln('Action=Unchanged');
+            Writeln('Record=', Match);
+            Exit;
+        end;
+        if not Apply then
+        begin
+            Writeln('Action=Plan');
+            Writeln('Operation=set-record');
+            if Matches = 0 then
+                Writeln('Record=New')
+            else
+                Writeln('Record=', Match);
+            Writeln('RequiresStopped=true');
+            Exit;
+        end;
+        Backup := CommitRecords(Root, Path, Before, After, RecordType.Size);
+        Writeln('Action=Applied');
+        Writeln('Operation=set-record');
+        Writeln('Record=', Match);
+        Writeln('Backup=', Backup);
+        Writeln('DataSHA256=', SHA256Bytes(After));
+    finally
+        Options.Free;
+        Fields.Free;
+        MatchFields.Free;
+        Selected.Free;
+        Catalog.Free;
+    end;
+end;
+
 procedure Run;
 var
     Command, Root: string;
@@ -583,6 +905,11 @@ begin
     end;
     if (Command='set-config') or (Command='set-server') or (Command='disable-servers') or (Command='ban-event') then begin
         BatchCommand; Exit;
+    end;
+    if (Command = 'schema') or (Command = 'list') or (Command = 'set-record') then
+    begin
+        RecordCommand;
+        Exit;
     end;
     if (Command = 'get-archive') or (Command = 'set-archive') then
     begin
